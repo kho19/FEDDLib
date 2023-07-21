@@ -1,8 +1,8 @@
 #!/bin/bash
 BUILD_TYPE=DEBUG
 
-MPI_C_COMPILER=`which mpicc`
-MPI_CXX_COMPILER=`which mpicxx`
+MPI_C_COMPILER=$(which mpicc)
+MPI_CXX_COMPILER=$(which mpicxx)
 
 TRILINOS_DIR=/.../Trilinos-install
 SOURCE_DIR=/.../feddlib
@@ -16,12 +16,12 @@ cmake \
 	-D CMAKE_CXX_STANDARD_LIBRARIES:STRING="${MPI_LIB_DIR}/libmpi_mpifh.dylib -lgfortran" \
 	-D CMAKE_VERBOSE_MAKEFILE:BOOL=ON \
 	-D MPI_BIN_DIR="/.../openmpi-3.1.5/bin" \
-    -D MPI_EXEC:FILEPATH="mpirun" \
-    -D MPI_EXEC_PRE_NUMPROCS_FLAGS="--oversubscribe" \ #for OpenMPI versions >= 3
-    -D MPI_EXEC_MAX_NUMPROCS="8" \
+	-D MPI_EXEC:FILEPATH="mpirun" \
+	-D MPI_EXEC_PRE_NUMPROCS_FLAGS="--oversubscribe" \ #for OpenMPI versions 3 >=
+-D MPI_EXEC_MAX_NUMPROCS="8" \
 	-D CMAKE_VERBOSE_MAKEFILE:BOOL=ON \
-	-D FEDDlib_ENABLE_ALL_PACKAGES:BOOL=ON \
-	-D FEDDlib_ENABLE_TESTS:BOOL=ON \
+	-D FEDDLib_ENABLE_ALL_PACKAGES:BOOL=ON \
+	-D FEDDLib_ENABLE_TESTS:BOOL=ON \
 	-D TPL_ENABLE_MPI:BOOL=ON \
 	-D TPL_ENABLE_Trilinos:BOOL=ON \
 	-D Trilinos_INCLUDE_DIRS:PATH=$TRILINOS_DIR/include \

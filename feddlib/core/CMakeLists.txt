@@ -1,101 +1,101 @@
-INCLUDE(TribitsPackageMacros)
-INCLUDE(TribitsAddOptionAndDefine)
-INCLUDE(TribitsLibraryMacros)
+include(TribitsPackageMacros)
+include(TribitsAddOptionAndDefine)
+include(TribitsLibraryMacros)
 
 #
 # A) Define the package
 #
 
-TRIBITS_PACKAGE(core)
-SET(${PACKAGE_NAME}_VERSION "1.0.0")
+tribits_package(core)
+set(${PACKAGE_NAME}_VERSION "1.0.0")
 
 #
 # B) Set up package-specific options
 #
 
-TRIBITS_ADD_SHOW_DEPRECATED_WARNINGS_OPTION()
+tribits_add_show_deprecated_warnings_option()
 
-FOREACH(TRILINOS_PACKAGE_NAME in ${Trilinos_PACKAGE_LIST})
-    IF(${TRILINOS_PACKAGE_NAME} STREQUAL "NOX")
-        SET(FEDD_HAVE_NOX TRUE)
-    ENDIF()
-ENDFOREACH()
+foreach(TRILINOS_PACKAGE_NAME in ${Trilinos_PACKAGE_LIST})
+    if(${TRILINOS_PACKAGE_NAME} STREQUAL "NOX")
+        set(FEDD_HAVE_NOX TRUE)
+    endif()
+endforeach()
 
-FOREACH(TRILINOS_PACKAGE_NAME in ${Trilinos_PACKAGE_LIST})
-    IF(${TRILINOS_PACKAGE_NAME} STREQUAL "Teko")
-        SET(FEDD_HAVE_TEKO TRUE)
-    ENDIF()
-ENDFOREACH()
+foreach(TRILINOS_PACKAGE_NAME in ${Trilinos_PACKAGE_LIST})
+    if(${TRILINOS_PACKAGE_NAME} STREQUAL "Teko")
+        set(FEDD_HAVE_TEKO TRUE)
+    endif()
+endforeach()
 
 
-IF(HAVE_ACEGENINTERFACE EQUAL TRUE)
+if(HAVE_ACEGENINTERFACE EQUAL TRUE)
 	message (" Have ACEGEN Interface ")
-	SET(FEDD_HAVE_ACEGENINTERFACE TRUE)
-ENDIF()
+	set(FEDD_HAVE_ACEGENINTERFACE TRUE)
+endif()
 
-TRIBITS_CONFIGURE_FILE(${PACKAGE_NAME}_config.h)
+tribits_configure_file(${PACKAGE_NAME}_config.h)
 
-SET(HEADERS "")
-SET(SOURCES "")
+set(HEADERS "")
+set(SOURCES "")
 
-SET(HEADERS ${HEADERS}
+set(HEADERS ${HEADERS}
     ${CMAKE_CURRENT_BINARY_DIR}/${PACKAGE_NAME}_config.h
 )
 
-SET(HEADERS ${HEADERS} FEDDCore.hpp)
+set(HEADERS ${HEADERS} FEDDCore.hpp)
 
-ADD_SUBDIRECTORY(FE)
-SET(HEADERS ${HEADERS} ${FE_HEADERS})
-SET(SOURCES ${SOURCES} ${FE_SOURCES})
+add_subdirectory(FE)
+set(HEADERS ${HEADERS} ${FE_HEADERS})
+set(SOURCES ${SOURCES} ${FE_SOURCES})
 
-ADD_SUBDIRECTORY(General)
-SET(HEADERS ${HEADERS} ${General_HEADERS})
-SET(SOURCES ${SOURCES} ${General_SOURCES})
+add_subdirectory(General)
+set(HEADERS ${HEADERS} ${General_HEADERS})
+set(SOURCES ${SOURCES} ${General_SOURCES})
 
-ADD_SUBDIRECTORY(LinearAlgebra)
-SET(HEADERS ${HEADERS} ${LinearAlgebra_HEADERS})
-SET(SOURCES ${SOURCES} ${LinearAlgebra_SOURCES})
+add_subdirectory(LinearAlgebra)
+set(HEADERS ${HEADERS} ${LinearAlgebra_HEADERS})
+set(SOURCES ${SOURCES} ${LinearAlgebra_SOURCES})
 
-ADD_SUBDIRECTORY(Mesh)
-SET(HEADERS ${HEADERS} ${Mesh_HEADERS})
-SET(SOURCES ${SOURCES} ${Mesh_SOURCES})
+add_subdirectory(Mesh)
+set(HEADERS ${HEADERS} ${Mesh_HEADERS})
+set(SOURCES ${SOURCES} ${Mesh_SOURCES})
 
-ADD_SUBDIRECTORY(AceFemAssembly)
-SET(HEADERS ${HEADERS} ${AceFemAssembly_HEADERS})
-SET(SOURCES ${SOURCES} ${AceFemAssembly_SOURCES})
+add_subdirectory(AceFemAssembly)
+set(HEADERS ${HEADERS} ${AceFemAssembly_HEADERS})
+set(SOURCES ${SOURCES} ${AceFemAssembly_SOURCES})
 
-ADD_SUBDIRECTORY(AceFemAssembly/specific)
-SET(HEADERS ${HEADERS} ${AceFemAssemblySpecific_HEADERS})
-SET(SOURCES ${SOURCES} ${AceFemAssemblySpecific_SOURCES})
+add_subdirectory(AceFemAssembly/specific)
+set(HEADERS ${HEADERS} ${AceFemAssemblySpecific_HEADERS})
+set(SOURCES ${SOURCES} ${AceFemAssemblySpecific_SOURCES})
 
-ADD_SUBDIRECTORY(AceFemAssembly/TestFE)
-SET(HEADERS ${HEADERS} ${AceFemAssemblyTestFE_HEADERS})
-SET(SOURCES ${SOURCES} ${AceFemAssemblyTestFE_SOURCES})
+add_subdirectory(AceFemAssembly/TestFE)
+set(HEADERS ${HEADERS} ${AceFemAssemblyTestFE_HEADERS})
+set(SOURCES ${SOURCES} ${AceFemAssemblyTestFE_SOURCES})
 
-ADD_SUBDIRECTORY(AceFemAssembly/AceInterface)
-SET(HEADERS ${HEADERS} ${AceFemAssemblyAceInterface_HEADERS})
-SET(SOURCES ${SOURCES} ${AceFemAssemblyAceInterface_SOURCES})
+add_subdirectory(AceFemAssembly/AceInterface)
+set(HEADERS ${HEADERS} ${AceFemAssemblyAceInterface_HEADERS})
+set(SOURCES ${SOURCES} ${AceFemAssemblyAceInterface_SOURCES})
 
 #ADD_SUBDIRECTORY(Utils)
 #SET(HEADERS ${HEADERS} ${Utils_HEADERS})
 #SET(SOURCES ${SOURCES} ${Utils_SOURCES})
 
-TRIBITS_EXCLUDE_AUTOTOOLS_FILES()
+tribits_exclude_autotools_files()
 # This is the list of files excluded from the tarball
-TRIBITS_EXCLUDE_FILES()
+tribits_exclude_files()
 
 # Add library target
-TRIBITS_ADD_LIBRARY(
+tribits_add_library(
 core
 HEADERS ${HEADERS}
 SOURCES ${SOURCES}
 )
 
-TRIBITS_ADD_TEST_DIRECTORIES(FE/tests)
-TRIBITS_ADD_TEST_DIRECTORIES(General/tests)
-TRIBITS_ADD_TEST_DIRECTORIES(Mesh/tests)
-TRIBITS_ADD_TEST_DIRECTORIES(LinearAlgebra/tests)
-TRIBITS_ADD_TEST_DIRECTORIES(AceFemAssembly/tests)
+tribits_add_test_directories(FE/tests)
+tribits_add_test_directories(General/tests)
+tribits_add_test_directories(Mesh/tests)
+tribits_add_test_directories(LinearAlgebra/tests)
+tribits_add_test_directories(AceFemAssembly/tests)
 
 #TRIBITS_ADD_EXAMPLE_DIRECTORIES(examples)
 
@@ -103,5 +103,5 @@ TRIBITS_ADD_TEST_DIRECTORIES(AceFemAssembly/tests)
 # Do standard postprocessing
 #
 
-TRIBITS_PACKAGE_POSTPROCESS()
+tribits_package_postprocess()
 

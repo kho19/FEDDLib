@@ -1,0 +1,6 @@
+// the configured options and settings
+// If the cmake variable e.g. FEDD_HAVE_CORE is defined then cmake generates a
+// header containing #define FEDD_HAVE_CORE for the preprocessor
+#cmakedefine FEDD_HAVE_CORE
+#cmakedefine FEDD_HAVE_PROBLEMS
+#cmakedefine FEDD_HAVE_AMR
