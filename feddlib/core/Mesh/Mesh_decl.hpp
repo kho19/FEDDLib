@@ -1,6 +1,8 @@
 #ifndef Mesh_decl_hpp
 #define Mesh_decl_hpp
 
+#include "feddlib/core/LinearAlgebra/Map_decl.hpp"
+#include <Xpetra_CrsGraphFactory.hpp>
 #define FULL_Mesh_TIMER
 
 #include "feddlib/core/FE/Elements.hpp"
@@ -21,6 +23,8 @@ Defintion of Mesh
 @copyright CH
 */
 
+// TODO public data fields and corresponding getter functions are superfluous. Either make members private or remove
+// getters
 namespace FEDD {
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no> class Mesh {
 
@@ -43,6 +47,9 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     typedef MultiVector<SC, LO, GO, NO> MultiVector_Type;
     typedef Teuchos::RCP<MultiVector_Type> MultiVectorPtr_Type;
+    typedef Xpetra::TpetraCrsGraph<LO, GO, NO> Graph_Type;
+    typedef Teuchos::RCP<Graph_Type> GraphPtr_Type;
+    typedef Xpetra::CrsGraphFactory<LO, GO, NO> GraphFactory_Type;
 
     typedef AABBTree<SC, LO, GO, NO> AABBTree_Type;
     typedef Teuchos::RCP<AABBTree_Type> AABBTreePtr_Type;
@@ -69,6 +76,8 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     MapConstPtr_Type getMapUnique() const;
 
     MapConstPtr_Type getMapRepeated() const;
+
+    GraphPtr_Type getDualGraph() const;
 
     MapConstPtr_Type getMapUniqueP2() const;
 
@@ -161,11 +170,11 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     // Rarely used and simpler than elementsC_
     vec2D_int_ptr_Type elementsVec_;
 
-    vec2D_dbl_ptr_Type pointsRepRef_; // Repeated Referenzkonfiguration
-    vec2D_dbl_ptr_Type pointsUniRef_; // Unique Referenzkonfiguration
+    vec2D_dbl_ptr_Type pointsRepRef_; // Repeated reference configuration
+    vec2D_dbl_ptr_Type pointsUniRef_; // Unique reference configuration
 
-    // vec_int_ptr_Type 		elementFlag_;
-
+    // dualGraph_ does not need a map since its row map = elementMap_
+    GraphPtr_Type dualGraph_;
     MapPtr_Type mapUniqueP2Map_;
     MapPtr_Type mapRepeatedP2Map_;
 
