@@ -4,12 +4,25 @@
 #include "MeshPartitioner_decl.hpp"
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
+#include <FROSch_Tools_def.hpp>
 #include <Teuchos_ArrayViewDecl.hpp>
 #include <Teuchos_ConfigDefs.hpp>
+#include <Teuchos_RCPBoostSharedPtrConversionsDecl.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_TestForException.hpp>
+#include <Teuchos_VerbosityLevel.hpp>
+#include <Teuchos_dyn_cast.hpp>
 #include <Teuchos_implicit_cast.hpp>
+#include <Tpetra_CombineMode.hpp>
+#include <Tpetra_Export_decl.hpp>
 #include <Xpetra_ConfigDefs.hpp>
+#include <Xpetra_CrsGraph.hpp>
+#include <Xpetra_CrsGraphFactory.hpp>
+#include <Xpetra_ExportFactory.hpp>
+#include <Xpetra_MapFactory_decl.hpp>
+#include <Xpetra_Map_def.hpp>
+#include <Xpetra_TpetraCrsGraph_decl.hpp>
 #include <Zoltan2_MeshAdapter.hpp>
 #include <algorithm>
 #include <cstdlib>
@@ -68,7 +81,7 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
     }
 }
 
-template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, GO, NO>::readMesh(int volumeID) {
+template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, GO, NO>::readMesh(const int volumeID) {
     if (volumeID != 10) {
         if (this->comm_->getRank() == 0) {
             cout << " #### WARNING: The volumeID was set manually and is no longer 10. Please make sure your volumeID "
@@ -76,9 +89,9 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
                  << endl;
         }
     }
-    auto delimiter = pList_->get("Delimiter", " ");
+    const auto delimiter = pList_->get("Delimiter", " ");
     for (int i = 0; i < domains_.size(); i++) {
-        auto meshName = pList_->get("Mesh " + std::to_string(i + 1) + " Name", "noName");
+        const auto meshName = pList_->get("Mesh " + std::to_string(i + 1) + " Name", "noName");
         TEUCHOS_TEST_FOR_EXCEPTION(meshName == "noName", std::runtime_error, "No mesh name given.");
         domains_[i]->initializeUnstructuredMesh(domains_[i]->getDimension(), "P1",
                                                 volumeID); // we only allow to read P1 meshes.
@@ -385,8 +398,6 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
 
     vec_GO_Type locepart(0);
     vec_GO_Type pointsRepIndices(0);
-    // Global Edge IDs of local elements
-    vec_GO_Type locedpart(0);
 
     // Get global IDs of element's nodes
     for (int i = 0; i < ne; i++) {
@@ -420,7 +431,7 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
     meshUnstr->elementsC_.reset(new Elements(FEType, dim));
     {
         // elementsGlobalMapping -> elements per Processor i.e. global indices of the elements owned by the current rank
-        // Pass invalid since the global number of elements in unknown (includes repetition across the ranks)
+        // Pass invalid since the global number of elements is unknown (includes repetition across the ranks)
         Teuchos::ArrayView<GO> elementsGlobalMapping = Teuchos::arrayViewFromVector(locepart);
         meshUnstr->elementMap_.reset(
             new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), elementsGlobalMapping, 0, this->comm_));
@@ -509,7 +520,7 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
 
     if (buildEdges) {
         if (verbose)
-            cout << "-- Build edge element list ... \n" << flush;
+            cout << "-- Build edge element list ..." << flush;
 
         buildEdgeListParallel(meshUnstr, elementsGlobal);
 
@@ -522,6 +533,8 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
         meshUnstr->getEdgeElements()->partitionEdges(elementMap, mapRepeated);
         FEDD_TIMER_STOP(partitionEdgesTimer);
 
+        // Global Edge IDs of local elements
+        vec_GO_Type locedpart(0);
         // edge global indices on different processors
         for (int i = 0; i < meshUnstr->getEdgeElements()->numberElements(); i++) {
             locedpart.push_back(meshUnstr->getEdgeElements()->getGlobalID((LO)i));
@@ -531,9 +544,6 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
         Teuchos::ArrayView<GO> edgesGlobalMapping = Teuchos::arrayViewFromVector(locedpart);
         meshUnstr->edgeMap_.reset(new Map<LO, GO, NO>(underlyingLib, (GO)-1, edgesGlobalMapping, 0, this->comm_));
     }
-
-    if (verbose)
-        cout << "done!" << endl;
 
     if (verbose)
         cout << "-- Partition interface ... " << flush;
@@ -820,20 +830,18 @@ void MeshPartitioner<SC, LO, GO, NO>::buildEdgeListParallel(MeshUnstrPtr_Type me
     mesh->setEdgeElements(edges);
 };
 
-// TODO kho stupid idea to save the whole graph on all ranks? i.e. should I partition here in a mega function?
-template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, GO, NO>::buildDualGraph(int meshNumber) {
+template <class SC, class LO, class GO, class NO>
+void MeshPartitioner<SC, LO, GO, NO>::buildDualGraph(const int meshNumber) {
 
     typedef Teuchos::OrdinalTraits<GO> OTGO;
-    bool print(this->comm_->getRank() == 0);
+    const auto myRank = this->comm_->getRank();
 
 #ifdef UNDERLYING_LIB_TPETRA
-    string underlyingLib = "Tpetra";
+    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
 #endif
-    auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
+    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr.is_null(), std::runtime_error, "Mesh is not of type unstructured.");
 
-    // TODO kho making it clear that a conversion between LO (int) and idx_t (int_32t or int_64t) is occuring. Same
-    // conversion is also occuring e.g. in the for loops. Feels like an overkill. Should this ever be done? Number of
-    // elements in the mesh
     auto ne = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumElementsGlobal());
     // Number of nodes in the mesh
     auto nn = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumGlobalNodes());
@@ -842,7 +850,7 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
     vec_idx_Type eptrVec(0); // Vector for local elements ptr (local is still global at this point)
     vec_idx_Type eindVec(0); // Vector for local elements ids
     // Serially distributed elements
-    auto elementsMesh = meshUnstr->getElementsC();
+    const auto elementsMesh = meshUnstr->getElementsC();
     // Fill the arrays
     makeContinuousElements(elementsMesh, eindVec, eptrVec);
     auto eptr = &eptrVec.at(0);
@@ -850,8 +858,8 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
 
     // Number of common nodes required to classify two elements as neighbours: min(ncommon, n1-1, n2-1)
     idx_t ncommon;
-    auto dim = meshUnstr->getDimension();
-    auto FEType = domains_[meshNumber]->getFEType();
+    const auto dim = meshUnstr->getDimension();
+    const auto FEType = domains_[meshNumber]->getFEType();
     if (dim == 2) {
         if (FEType == "P1") {
             ncommon = 2;
@@ -868,42 +876,26 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "Wrong Dimension.");
 
     idx_t numflag = 0;
+
     // Arrays for storing the partition
     // METIS allocates these using malloc
     idx_t *xadj;
     idx_t *adjncy;
 
-    if (print) {
+    if (myRank == 0) {
         cout << "--- Building dual graph with METIS ...";
     }
-    auto returnCode = METIS_MeshToDual(&ne, &nn, eptr, eind, &ncommon, &numflag, &xadj, &adjncy);
+    const auto returnCode = METIS_MeshToDual(&ne, &nn, eptr, eind, &ncommon, &numflag, &xadj, &adjncy);
 
-    if (print) {
+    if (myRank == 0) {
         cout << "\n--\t Metis return code: " << returnCode;
         cout << "\n--- done" << endl;
     }
 
-    // No partitioning being done here so element i.e. dualGraph row map is unity
-    vec_GO_Type unityElementList(ne);
-    for (auto i = 0; i < unityElementList.size(); i++) {
-        // Implicit conversion from unsigned (size_t) to signed (GO)
-        unityElementList.at(i) = i;
-    }
+    const auto locReplMap = Xpetra::MapFactory<LO, GO, NO>::createLocalMap(underlyingLibType, ne, this->comm_);
+    meshUnstr->elementMap_.reset(new Map<LO, GO, NO>(locReplMap));
 
-    auto unityElementListView = Teuchos::arrayViewFromVector(unityElementList);
-    auto elementMap = meshUnstr->getElementMap();
-
-    // This requires determineRanks() to have been called first
-    // TODO necessary to determin numGlobalEntries here or just pass invalid to Map?
-    /* auto numGlobalEntries = Teuchos::implicit_cast<GO>( */
-    /*     ne * (std::get<1>(rankRanges_[meshNumber]) - std::get<0>(rankRanges_[meshNumber]) + 1)); */
-    /* elementMap.reset(new Map<LO, GO, NO>(underlyingLib, numGlobalEntries, unityElementListView, 0, this->comm_)); */
-    /* cout << "numGlobalEntries " << numGlobalEntries << endl; */
-    elementMap.reset(new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), unityElementListView, 0, this->comm_));
-
-    auto xpetraElementMap = elementMap->getXpetraMap();
-
-    // Copy idx_t arrays to ArrayRCP arrays required by GraphFactory_Type::Build
+    // Copy idx_t arrays to ArrayRCP arrays required by graph constructor
     auto xadjArrayRCP = Teuchos::ArrayRCP<size_t>(ne + 1);
     for (auto i = 0; i < xadjArrayRCP.size(); i++) {
         xadjArrayRCP[i] = xadj[i];
@@ -916,58 +908,59 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
 
     // Both row and column maps are unity
     // All entries are on all ranks
-    // dynamic cast because downcasting from CrsGraph to TpetraCrsGraph
-    meshUnstr->dualGraph_ = Teuchos::rcp_dynamic_cast<Graph_Type>(
-        GraphFactory_Type::Build(xpetraElementMap, xpetraElementMap, xadjArrayRCP, adjncyArrayRCP));
-
+    const auto xpetraElementMap = meshUnstr->getElementMap()->getXpetraMap();
+    meshUnstr->dualGraph_ =
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(xpetraElementMap, xpetraElementMap, xadjArrayRCP, adjncyArrayRCP);
+    meshUnstr->dualGraph_->fillComplete();
     METIS_Free(xadj);
     METIS_Free(adjncy);
 }
 
 template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraph(int meshNumber) {
+void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int meshNumber, const int overlap) {
 
-    bool print(this->comm_->getRank() == 0);
-    auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
-    auto dualGraph = meshUnstr->getDualGraph();
-    /* TEUCHOS_TEST_FOR_EXCEPTION(dualGraph == NULL, std::runtime_error, */
-    /*                            "Attempting to partition non-existent dual graph. Ensure dual graph has been " */
-    /*                            "constructed e.g. with buildDualGraph()"); */
+    typedef Teuchos::OrdinalTraits<GO> OTGO;
+#ifdef UNDERLYING_LIB_TPETRA
+    const string underlyingLib = "Tpetra";
+    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
+#endif
 
+    const auto myRank = this->comm_->getRank();
+    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
+
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr.is_null(), std::runtime_error, "Mesh is not of type unstructured.");
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr->dualGraph_.is_null(), std::runtime_error,
+                               "Attempting to partition non-existent dual graph. Ensure dual graph has been "
+                               "constructed e.g. with buildDualGraph()");
+    // Ensure that dual graph is not yet partitioned
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr->elementMap_->getXpetraMap()->isDistributed(), std::runtime_error,
+                               "Dual graph is already partitioned. Can only partition locally replicated graph.");
+
+    const int indexBase = 0;
     // Number of elements in the mesh = number of vertices in the dual graph
     auto nvtxs = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumElementsGlobal());
     // Balancing constraints. Simple vertex balancing here i.e. one weight per vertex
     idx_t ncon = 1;
-    // TODO maybe ensure that dual graph is not yet partitioned?
 
     // Row indices of the CRS format
-    auto xadjRCPVec = dualGraph->getNodeRowPtrs();
+    const auto ptrTpetraCrsGraph = Teuchos::rcp_dynamic_cast<Xpetra::TpetraCrsGraph<LO, GO, NO>>(meshUnstr->dualGraph_);
+    TEUCHOS_TEST_FOR_EXCEPTION(ptrTpetraCrsGraph.is_null(), std::runtime_error,
+                               "Using dual graph requires Tpetra. It seems you are using Epetra.")
+    const auto xadjRCPVec = ptrTpetraCrsGraph->getNodeRowPtrs();
+
     // Note that using std::move here might be more efficient
     vec_idx_Type xadjVec(xadjRCPVec.begin(), xadjRCPVec.end());
 
     // Column indices of the CRS format
     // Size is stored at the end of the row indices
-    // TODO kho question is whether to use local or global indices here. I understand that local is cheaper to global
-    // since no conversion is required but can only be used if column map exists. If we check that only non-partitioned
-    // graphs are partitioned here then the col map should exist. Alternatively we could ask if it exists and generate
-    // it otherwise.
     vec_idx_Type adjncyVec(xadjVec.back());
     Teuchos::ArrayView<const LO> tempRowView;
-    for (auto i = 0; i < nvtxs; i++) {
-        dualGraph->getLocalRowView(i, tempRowView);
-        std::move(tempRowView.begin(), tempRowView.end(), adjncyVec.begin() + xadjVec[i]);
-    }
 
-    /* if (print) { */
-    /*     cout << "xadjVec\n"; */
-    /*     for (auto temp : xadjVec) { */
-    /*         cout << temp << endl; */
-    /*     } */
-    /*     cout << "adjncyVec\n"; */
-    /*     for (auto temp : adjncyVec) { */
-    /*         cout << temp << endl; */
-    /*     } */
-    /* } */
+    for (auto i = 0; i < nvtxs; i++) {
+        meshUnstr->dualGraph_->getLocalRowView(i, tempRowView);
+        // Not using std::move so that dualGraph remains valid for later use
+        std::copy(tempRowView.begin(), tempRowView.end(), adjncyVec.begin() + xadjVec[i]);
+    }
 
     idx_t *xadj = xadjVec.data();
     idx_t *adjncy = adjncyVec.data();
@@ -997,7 +990,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraph(int meshNumber) {
     // See for random number generator
     options[METIS_OPTION_SEED] = 44;
     // Start at zero or one
-    options[METIS_OPTION_NUMBERING] = 0;
+    options[METIS_OPTION_NUMBERING] = indexBase;
     // Verbosity level during execution of the algo
     options[METIS_OPTION_DBGLVL] = 0;
 
@@ -1006,16 +999,16 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraph(int meshNumber) {
     auto part = partVec.data();
 
     // Number of available ranks = number of parts to partition into
-    idx_t nparts = std::get<1>(rankRanges_[meshNumber]) - std::get<0>(rankRanges_[meshNumber]) + 1;
+    idx_t nparts = get<1>(rankRanges_[meshNumber]) - get<0>(rankRanges_[meshNumber]) + 1;
 
-    if (comm_->getRank() == 0) {
+    if (myRank == 0) {
         cout << "--- Partitioning dual graph with METIS ... \n";
     }
 
     if (nparts > 1) {
         idx_t returnCode = METIS_PartGraphKway(&nvtxs, &ncon, xadj, adjncy, NULL, NULL, NULL, &nparts, NULL, NULL,
                                                options, &edgecut, part);
-        if (print) {
+        if (myRank == 0) {
             cout << "\n--\t Metis return code: " << returnCode;
         }
     } else {
@@ -1024,10 +1017,70 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraph(int meshNumber) {
         }
     }
 
-    if (print) {
+    if (myRank == 0) {
         cout << "\n--\t objval: " << edgecut;
         cout << "\n-- done!" << endl;
     }
+    // We need the distributed dual graph to be able to perform assembly on each subdomain
+    // The dual graph map is the same as the element map, so update that here
+    vec_GO_Type locepart(0);
+    for (auto i = 0; i < nvtxs; i++) {
+        // Subtract start of the rank range to map required ranks to interval starting at zero
+        if (part[i] == this->comm_->getRank() - get<0>(this->rankRanges_[meshNumber])) {
+            locepart.push_back(i);
+        }
+    }
+    // elementsGlobalMapping -> elements per Processor i.e. global indices of the elements owned by the current rank
+    // Pass invalid since the global number of elements is unknown (includes repetition across the ranks)
+    // TODO kho is this the right way to use invalid?
+    Teuchos::ArrayView<GO> elementsGlobalMapping = Teuchos::arrayViewFromVector(locepart);
+    const auto newMap =
+        Teuchos::rcp(new Map(underlyingLib, OTGO::invalid(), elementsGlobalMapping, indexBase, this->comm_));
+
+    // Create an export object since the target map is one to one but the source map may not be
+    const auto exporter =
+        Xpetra::ExportFactory<LO, GO, NO>::Build(meshUnstr->elementMap_->getXpetraMap(), newMap->getXpetraMap());
+
+    // New graph into which the previous graph will be imported
+    auto newGraph = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(newMap->getXpetraMap(), newMap->getNodeNumElements());
+    // Need to dynamic cast to TpetraCrsGraph for doExport(). Required for good error messages when using Epetra
+    auto newTpetraGraph = Teuchos::rcp_dynamic_cast<Xpetra::TpetraCrsGraph<LO, GO, NO>>(newGraph);
+    TEUCHOS_TEST_FOR_EXCEPTION(newTpetraGraph.is_null(), std::runtime_error,
+                               "It seems you are not using Tpetra as required");
+    newTpetraGraph->doExport(*meshUnstr->dualGraph_, *exporter, Xpetra::INSERT);
+    newTpetraGraph->fillComplete();
+
+    /* if (myRank == 0) { */
+    /*     cout << "Before extending #############################\n"; */
+    /* } */
+    /* Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
+    /* newGraph->describe(*out, Teuchos::VERB_EXTREME); */
+
+    // Cast to pointer-to-const for FROSch function
+    auto newExtendedGraph = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(newGraph);
+    auto newExtendedMap = Teuchos::rcp_implicit_cast<const Xpetra::Map<LO, GO, NO>>(newMap->getXpetraMap());
+
+    // Extend overlap by specified number of times
+    for (auto i = 0; i < overlap; i++) {
+        FROSch::ExtendOverlapByOneLayer(newExtendedGraph, newExtendedGraph->getColMap(), newExtendedGraph,
+                                        newExtendedMap);
+    }
+
+    // Remove constness. Dangerous and should not usually be done
+    // Exception here because graph was only made const for ExtendOverlapByOneLayer()
+    meshUnstr->dualGraph_ = Teuchos::rcp_const_cast<Xpetra::CrsGraph<LO, GO, NO>>(newExtendedGraph);
+
+    meshUnstr->elementMap_ = Teuchos::rcp(new Map(newExtendedMap));
+
+    /* if (myRank == 0) { */
+    /*     cout << "After extending #############################\n"; */
+    /* } */
+    /* meshUnstr->elementMap_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
+    /* meshUnstr->dualGraph_->describe(*out, Teuchos::VERB_EXTREME); */
+
+    // TODO This is done in readAndPartitionMesh(), but does it need doing here?
+    //  Update the points maps, build the elements and edges as in readAndPartitionMesh
+    //  Consider putting this in a seperate function
 }
 
 template <class SC, class LO, class GO, class NO>

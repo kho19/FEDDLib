@@ -21,7 +21,9 @@ TRIBITS_COPY_FILES_TO_BINARY_DIR(data_nonLinLaplace
 TRIBITS_COPY_FILES_TO_BINARY_DIR(mesh_nonLinLaplace
 	SOURCE_DIR ${CMAKE_SOURCE_DIR}/meshes
 	SOURCE_FILES square.mesh
+	SOURCE_FILES simple_square.mesh
 	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
 	DEST_FILES square.mesh
+	DEST_FILES simple_square.mesh
   EXEDEPS nonLinLaplace
 )

@@ -93,7 +93,7 @@ class MeshPartitioner {
        after a call to this function. Called with volume ID in order to set in case it is not equal to ten. Always make
        sure the volumeID corresponds to the highest given flag.
         */
-    void readMesh(int volumeID = 10);
+    void readMesh(const int volumeID = 10);
 
     /*! \brief Only used in 3D to set the edges as subelements to surfaces*/
     void setEdgesToSurfaces(int meshNumber);
@@ -108,13 +108,13 @@ class MeshPartitioner {
             Here all necessary maps and lists are created
     */
     // TODO not implemented
-    void partitionMesh(MeshUnstrPtr_Type &mesh, int meshNumber);
+    void partitionMesh(MeshUnstrPtr_Type &mesh, const int meshNumber);
 
     /*!
      \brief partition existing dual graph using Metis
      this->dualGraph_ must be initialised before calling partitionDualGraph()
      */
-    void partitionDualGraph(int meshNumber);
+    void partitionDualGraphWithOverlap(const int meshNumber, const int overlap = 0);
 
     /*!
             \brief Making the edge list parallel
@@ -131,7 +131,7 @@ class MeshPartitioner {
       Essentialy a wrapper of the metis function METIS_MeshToDual()
       Note: CSR (compressed sparse row), CRS (compressed row storage), Yale format are all the same
      */
-    void buildDualGraph(int meshNumber);
+    void buildDualGraph(const int meshNumber);
     /*!
             \brief Setting surfaces, i.e. edges in 2D and triangles in 3D, as subelements to the corresponding elements
     */

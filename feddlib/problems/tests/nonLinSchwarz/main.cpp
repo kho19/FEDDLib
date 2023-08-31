@@ -11,13 +11,6 @@
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
 
-#ifdef FEDD_HAVE_METIS
-#include "metis.h"
-#endif
-#ifdef FEDD_HAVE_PARMETIS
-#include "parmetis.h"
-#endif
-
 typedef unsigned UN;
 typedef default_sc SC;
 typedef default_lo LO;
@@ -137,7 +130,7 @@ int main(int argc, char *argv[]) {
 
         partitionerP1.readMesh();
         partitionerP1.buildDualGraph(0);
-        partitionerP1.partitionDualGraph(0);
+        partitionerP1.partitionDualGraphWithOverlap(0, 1);
 
         domain = domainP1;
     }

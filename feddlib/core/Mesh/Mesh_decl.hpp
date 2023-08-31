@@ -47,7 +47,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     typedef MultiVector<SC, LO, GO, NO> MultiVector_Type;
     typedef Teuchos::RCP<MultiVector_Type> MultiVectorPtr_Type;
-    typedef Xpetra::TpetraCrsGraph<LO, GO, NO> Graph_Type;
+    typedef Xpetra::CrsGraph<LO, GO, NO> Graph_Type;
     typedef Teuchos::RCP<Graph_Type> GraphPtr_Type;
     typedef Xpetra::CrsGraphFactory<LO, GO, NO> GraphFactory_Type;
 
