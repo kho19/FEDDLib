@@ -275,24 +275,26 @@ void tpetraImportExport(int argc, char *argv[]) {
     /* overlappingMat->describe(*out, Teuchos::VERB_EXTREME); */
 
     uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, columnMap, 4));
-    /* for (int i = 0; i < 2; i++) { */
-    /*     uniqueMat->insertLocalValues(i, localColIdx, valTwo); */
-    /* } */
-    // The following code causes undefined behaviour. doExport and doImport can only be called on pristine matrices
-    // TODO discuss this
-    /* uniqueMat->fillComplete(); */
-    /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
-    /* uniqueMat->resumeFill(); */
+    for (int i = 0; i < 2; i++) {
+        uniqueMat->insertLocalValues(i, localColIdx, valTwo);
+    }
+    // The following code causes undefined behaviour unless "Optimize Storage" is set to false. This cause the storage
+    // pattern to remain mutable for later data entry.
+    RCP<ParameterList> params = parameterList();
+    params->set("Optimize Storage", false);
+
+    uniqueMat->fillComplete(params);
+    uniqueMat->describe(*out, Teuchos::VERB_EXTREME);
+    uniqueMat->resumeFill();
     uniqueMat->doExport(*overlappingMat, overlappingToUniqueExporter, Tpetra::ADD);
     uniqueMat->fillComplete();
     uniqueMat->describe(*out, Teuchos::VERB_EXTREME);
 
     // -------------- Test 4: Modify values in recieving matrix and then do reverse operation ------------------
     // Use the matrices from Test 3
-    // TODO why does this not work? Should be able to insert local values anywhere in local row zero since all columns
-    // are owned. replaceLocalValues does work, so changing the map seems to be the problem?
     /* uniqueMat->resumeFill(); */
     /* if (myRank == 0) { */
+    // Note that insertLocalValues will not work here since fillComplete() has previously been called on this matrix
     /*     uniqueMat->replaceLocalValues(0, localColIdx, valZero); */
     /* } */
     /* uniqueMat->fillComplete(); */

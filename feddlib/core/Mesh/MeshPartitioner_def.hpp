@@ -522,6 +522,8 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
         if (verbose)
             cout << "-- Build edge element list ..." << flush;
 
+        // Generates a list of objects of class edge. These are a specialisation of Elements. They are defined by
+        // starting and ending node and contain information on surrounding elements.
         buildEdgeListParallel(meshUnstr, elementsGlobal);
 
         if (verbose)
