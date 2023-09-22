@@ -5,6 +5,9 @@ SET(Solver_HEADERS
 	Solver/LinearSolver_decl.hpp
 	Solver/LinearSolver_def.hpp
 	Solver/LinearSolver.hpp
+  Solver/NonLinearSchwarzOperator.hpp
+  Solver/NonLinearSchwarzOperator_decl.hpp
+  Solver/NonLinearSchwarzOperator_def.hpp
     Solver/NonLinearSolver.hpp
     Solver/NonLinearSolver_decl.hpp
     Solver/NonLinearSolver_def.hpp
@@ -26,6 +29,7 @@ CACHE INTERNAL "")
 SET(Solver_SOURCES
 	Solver/DAESolverInTime.cpp
     Solver/LinearSolver.cpp
+    Solver/NonLinearSchwarzOperator.cpp
     Solver/NonLinearSolver.cpp
     Solver/Preconditioner.cpp
     Solver/PreconditionerOperator.cpp

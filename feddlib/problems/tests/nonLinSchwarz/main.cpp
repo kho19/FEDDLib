@@ -4,12 +4,25 @@
 #include "feddlib/core/General/ExporterParaView.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner.hpp"
-#include "feddlib/problems/Solver/NonLinearSolver.hpp"
+#include "feddlib/problems/specific/NonLinLaplace.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
+
+void zeroDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = 0.; }
+
+void oneFunc2D(double *x, double *res, double *parameters) {
+    res[0] = 1.;
+    res[1] = 1.;
+}
+
+void oneFunc3D(double *x, double *res, double *parameters) {
+    res[0] = 1.;
+    res[1] = 1.;
+    res[2] = 1.;
+}
 
 typedef unsigned UN;
 typedef default_sc SC;
@@ -42,9 +55,15 @@ typedef RCP<MultiVector_Type> MultiVectorPtr_Type;
 typedef RCP<const MultiVector_Type> MultiVectorConstPtr_Type;
 typedef BlockMultiVector<SC, LO, GO, NO> BlockMultiVector_Type;
 typedef RCP<BlockMultiVector_Type> BlockMultiVectorPtr_Type;
+
+typedef NonLinearProblem<SC, LO, GO, NO> NonLinearProblem_Type;
+typedef RCP<NonLinearProblem_Type> NonLinearProblemPtr_Type;
 } // namespace NonLinearSchwarz
 
 using namespace NonLinearSchwarz;
+
+void solve(NonLinearProblemPtr_Type problem);
+void localAssembly(NonLinearProblemPtr_Type problem);
 
 int main(int argc, char *argv[]) {
 
@@ -134,37 +153,98 @@ int main(int argc, char *argv[]) {
 
         domain = domainP1;
     }
-    /* cout << "########################### Final print of maps " */
-    /*         "####################################" */
-    /*      << endl; */
-    /* Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
-    /* domain->getMesh()->getDualGraph()->getMap()->describe(*out, Teuchos::VERB_EXTREME); */
-    /* domain->getMapUnique()->print(); */
+    // ########################
+    // Set flags for the boundary conditions
+    // ########################
+
+    Teuchos::RCP<BCBuilder<SC, LO, GO, NO>> bcFactory(new BCBuilder<SC, LO, GO, NO>());
+    bcFactory->addBC(zeroDirichlet, 1, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
+
+    auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
+
+    nonLinLaplace->addBoundaries(bcFactory);
+
+    if (dim == 2) {
+        nonLinLaplace->addRhsFunction(oneFunc2D);
+    } else if (dim == 3) {
+        nonLinLaplace->addRhsFunction(oneFunc3D);
+    }
+    // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
+    // between the subdomains
+    nonLinLaplace->initializeProblem();
+
     // ########################
     // Solve the problem using nonlinear Schwarz
     // ########################
+    solve(nonLinLaplace);
 
     return (EXIT_SUCCESS);
 }
 
 // Solve the problem
-void solve() {
+void solve(NonLinearProblemPtr_Type problem) {
+    // Define convergence requirements
+    double gmresIts = 0.;
+    double residual0 = 1.;
+    double residual = 1.;
+    double outerTol = problem->getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6);
+    int outerNonLinIts = 0;
+    int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
+    double relativeResidual = residual / residual0;
 
-    /* RCP<LHelementList; */
-    /* buildAndPartitionDualGraph(elementList, dualGraphPartition); */
+    // Set initial guess
+    // If solving p-Laplace an initial guess with nonzero gradient must be provided. Use fromThyraMultiVector in this
+    // case.
+    problem->solution_->putScalar(0.);
 
     // Outer Newton iterations
-    /* while (notConverged && !maxIters) { */
-    /*     // Form the global problem */
-    /* } */
+    while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
+        // TODO solve the local problems. These are divided over the ranks, one problem per rank.
+        localAssembly(problem);
+        // TODO build the global Jacobian and rhs
+        //  Points to consider:
+        //   - The local problems are distributed, so building the global problem will require communicating these
+        //   - The global (linear) problem should be solved with gmres, the problem matrix should also be distributed.
+        //   Have to think of how to do this assembly plus redistribution.
+        //   - Do I actually assemble a matrix or build an operator that does the same thing as a matrix? Check how
+        //   FROSch achieves this with operators.
+        //   - Set the Problems system matrix and rhs to be the constructed global Jacobian and rhs. Then we can solve
+        //   the system as bellow.
+        //
+        // TODO solve using the linear solve method built into Problem. This can be specified in the xml file to be
+        // gmres together with a type of preconditioner (none in this case)
+        //
+        // TODO update the current solution
+    }
 }
 
-// Extend partition of a dual graph
-// Essentialy a wrapper of the FROSch function ExtendOverlapByOneLayer()
-void extendDualGraphPartition() {}
-
-// Assemble the Schwarz operator by combining local operators
-void globalAssembly() {}
-
 // Solve the linear problem on the local overlapping subdomain
-void localAssembly() {}
+void localAssembly(NonLinearProblemPtr_Type problem) {
+
+    // TODO iterate over each element here to assemble the local Jacobian and rhs (like in FE_def)
+    // maybe even consider using the existing assemble function in FE_def? The elements over which are assembled are
+    // those stored in elementsC. The only thing that might not fit is that the whole system is assembled together.
+    // - use a FROSch subdomain solver in each Newton iteration! The apply method inverts matrix A
+    //
+    // Notes FROSch:
+    //  - submatrices are stored in a Matrix object (how is the map constructed?)
+    //  - local solutions are computed with direct solvers (Amesos2) in a three-step process: 1. the symbolic
+    //  factorisation is computed giving the sparsity pattern of the matrix, 2. the numerical factorisation is computed
+    //  resulting in L and U, 3. the system is solved.
+    //  - SchwarzOperator has systemMatrix K_, subdomainMatrix_, localSubdomainMatrix_
+    //     - K_ holds the system nonoverlapping
+    //     - subdomainMatrix_ holds the systemMatrix in an overlapping fashion
+    //     - localSubdomainMatrix_ (I THINK) holds the local subdomain on each rank. I am not sure how this is inverted
+    //       though since I thought inversion would act as if the matrix is distributed across all ranks.
+    //     - What about OverlappingMatrix_ seems to serve the same purpose as localSubdomainMatrix_
+    //        - initializeSubdomainSolver is done with overlappingMatrix_ in overlappingOperator in method
+    //          computeOverlappingOperator which is only called in compute() in algebraicOverlappingOperator.
+    //        - with localSubdomainMatrix_ in algebraicOverlappingOperator in method initialize()
+    //
+    //  - FROSch_OverlappingOperator::computeOverlappingOperator() calls the subdomainSolver_ compute() function. In
+    //    this function either the LU factorisation of the local matrix is computed or the preconditioner is generated
+    //    if solving iteratively. The subdomainSolver_->apply() then solves the system, but using either one of the
+    //    precomputed LU factorisation or preconditioner.
+}
