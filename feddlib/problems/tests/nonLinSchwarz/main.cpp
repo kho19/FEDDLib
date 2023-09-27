@@ -7,9 +7,11 @@
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
+#include <Teuchos_TestForException.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
+#include <stdexcept>
 
 void zeroDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = 0.; }
 
@@ -117,27 +119,7 @@ int main(int argc, char *argv[]) {
     // ########################
     DomainPtr_Type domain;
     GraphPtr_Type dualGraph;
-    if (!meshType.compare("structured")) {
-        TEUCHOS_TEST_FOR_EXCEPTION(size % minNumberSubdomains != 0, std::logic_error,
-                                   "Wrong number of processors for structured mesh.");
-        if (dim == 2) {
-            n = (int)(std::pow(size, 1 / 2.) + 100. * Teuchos::ScalarTraits<double>::eps()); // 1/H
-            std::vector<double> x(2);
-            // Starting coordinates for the rectangle (lower left corner?)
-            x[0] = 0.0;
-            x[1] = 0.0;
-            domain = Teuchos::rcp(new Domain<SC, LO, GO, NO>(x, 1., 1., comm));
-            domain->buildMesh(1, "Square", dim, FEType, n, m, numProcsCoarseSolve);
-        } else if (dim == 3) {
-            n = (int)(std::pow(size, 1 / 3.) + 100. * Teuchos::ScalarTraits<SC>::eps()); // 1/H
-            std::vector<double> x(3);
-            x[0] = 0.0;
-            x[1] = 0.0;
-            x[2] = 0.0;
-            domain = Teuchos::rcp(new Domain<SC, LO, GO, NO>(x, 1., 1., 1., comm));
-            domain->buildMesh(1, "Square", dim, FEType, n, m, numProcsCoarseSolve);
-        }
-    } else if (!meshType.compare("unstructured")) {
+    if (!meshType.compare("unstructured")) {
         Teuchos::RCP<Domain<SC, LO, GO, NO>> domainP1;
         domainP1.reset(new Domain<SC, LO, GO, NO>(comm, dim));
 
@@ -150,8 +132,12 @@ int main(int argc, char *argv[]) {
         partitionerP1.readMesh();
         partitionerP1.buildDualGraph(0);
         partitionerP1.partitionDualGraphWithOverlap(0, 1);
+        partitionerP1.buildSubdomainFEsAndNodeLists(0);
 
         domain = domainP1;
+    } else {
+        TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
+                                   "Can only use unstructured mesh with nonlinea Schwarz for now.");
     }
     // ########################
     // Set flags for the boundary conditions
@@ -162,23 +148,23 @@ int main(int argc, char *argv[]) {
     bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
 
-    auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
-
-    nonLinLaplace->addBoundaries(bcFactory);
-
-    if (dim == 2) {
-        nonLinLaplace->addRhsFunction(oneFunc2D);
-    } else if (dim == 3) {
-        nonLinLaplace->addRhsFunction(oneFunc3D);
-    }
+    /* auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll)); */
+    /**/
+    /* nonLinLaplace->addBoundaries(bcFactory); */
+    /**/
+    /* if (dim == 2) { */
+    /*     nonLinLaplace->addRhsFunction(oneFunc2D); */
+    /* } else if (dim == 3) { */
+    /*     nonLinLaplace->addRhsFunction(oneFunc3D); */
+    /* } */
     // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
     // between the subdomains
-    nonLinLaplace->initializeProblem();
+    /* nonLinLaplace->initializeProblem(); */
 
     // ########################
     // Solve the problem using nonlinear Schwarz
     // ########################
-    solve(nonLinLaplace);
+    /* solve(nonLinLaplace); */
 
     return (EXIT_SUCCESS);
 }

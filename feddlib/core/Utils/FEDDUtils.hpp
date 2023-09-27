@@ -2,6 +2,9 @@
 #define FEDDUTILS_hpp
 
 #include "feddlib/core/FEDDCore.hpp"
+#include <Xpetra_CrsGraphFactory.hpp>
+#include <Xpetra_Map.hpp>
+#include <Xpetra_ImportFactory.hpp>
 
 
 #ifndef FEDD_TIMER_START
@@ -203,6 +206,19 @@ void make_unique( std::vector<T>& in )
     in.erase( it, in.end() );
 };
 
+// 
+template <class LO, class GO, class NO>
+int ExtendOverlapByOneLayer(Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> inputGraph,
+                            Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> &outputGraph) {
+    Teuchos::RCP<Xpetra::CrsGraph<LO, GO, NO>> tmpGraph =
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(inputGraph->getColMap(), inputGraph->getGlobalMaxNumRowEntries());
+    Teuchos::RCP<Xpetra::Import<LO, GO, NO>> scatter =
+        Xpetra::ImportFactory<LO, GO, NO>::Build(inputGraph->getRowMap(), inputGraph->getColMap());
+    tmpGraph->doImport(*inputGraph, *scatter, Xpetra::ADD);
+    tmpGraph->fillComplete(inputGraph->getDomainMap(), inputGraph->getRangeMap());
 
+    outputGraph = tmpGraph.getConst();
+    return 0;
+}
 }
 #endif

@@ -571,6 +571,19 @@ void Mesh<SC,LO,GO,NO>::flipSurface(FiniteElement_Type feSub){
     }   
 
 }
+// ################# Nonlinear Schwarz related functions ##################
+template <class SC, class LO, class GO, class NO>
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMapOverlapping() {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error, "Overlapping element map of mesh does not exist.");
+    return elementMapOverlapping_;
+}
+
+template <class SC, class LO, class GO, class NO>
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error, "Overlapping element map of mesh does not exist.");
+    return mapOverlapping_;
+}
+
 
 }
 #endif

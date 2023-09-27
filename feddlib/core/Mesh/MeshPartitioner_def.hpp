@@ -81,39 +81,6 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
     }
 }
 
-template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, GO, NO>::readMesh(const int volumeID) {
-    if (volumeID != 10) {
-        if (this->comm_->getRank() == 0) {
-            cout << " #### WARNING: The volumeID was set manually and is no longer 10. Please make sure your volumeID "
-                    "corresponds to the volumeID in your mesh file. #### "
-                 << endl;
-        }
-    }
-    const auto delimiter = pList_->get("Delimiter", " ");
-    for (int i = 0; i < domains_.size(); i++) {
-        const auto meshName = pList_->get("Mesh " + std::to_string(i + 1) + " Name", "noName");
-        TEUCHOS_TEST_FOR_EXCEPTION(meshName == "noName", std::runtime_error, "No mesh name given.");
-        domains_[i]->initializeUnstructuredMesh(domains_[i]->getDimension(), "P1",
-                                                volumeID); // we only allow to read P1 meshes.
-        domains_[i]->readMeshSize(meshName, delimiter);
-    }
-
-    // Determine an allocation of ranks to meshes
-    determineRanks();
-
-    for (int i = 0; i < domains_.size(); i++) {
-        auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(domains_[i]->getMesh());
-        // Reading nodes
-        meshUnstr->readMeshEntity("node");
-        // Reading elements
-        meshUnstr->readMeshEntity("element");
-        // Reading surfaces
-        meshUnstr->readMeshEntity("surface");
-        // Reading line segments
-        meshUnstr->readMeshEntity("line");
-    }
-}
-
 template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, GO, NO>::determineRanks() {
     bool verbose(comm_->getRank() == 0);
     vec_int_Type fractions(domains_.size(), 0);
@@ -423,7 +390,11 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsRepGlobMapping, 0, this->comm_));
     MapConstPtr_Type mapRepeated = meshUnstr->mapRepeated_;
 
-    // We keep the global elements if we want to build edges later. Otherwise they will be deleted
+    // TODO KHo why create another rcp to the elements? elementsMesh will still point to the old elements after
+    // elementsC_ has been reset.
+    //
+    // We keep the global elements if we want to build edges later. Otherwise they will be
+    // deleted
     ElementsPtr_Type elementsGlobal = Teuchos::rcp(new Elements_Type(*elementsMesh));
 
     // Resetting elements to add the corresponding local IDs instead of global ones since global elements were stored
@@ -441,7 +412,9 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
             for (int i = 0; i < locepart.size(); i++) {
                 // Build local element and save
                 std::vector<int> tmpElement;
+                // Iterate over the nodes in an element
                 for (int j = eptr[locepart.at(i)]; j < eptr[locepart.at(i) + 1]; j++) {
+                    // Map the node index from global to local and save
                     int index = mapRepeated->getLocalElement(Teuchos::implicit_cast<long long>(eind[j]));
                     tmpElement.push_back(index);
                 }
@@ -833,259 +806,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildEdgeListParallel(MeshUnstrPtr_Type me
 };
 
 template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::buildDualGraph(const int meshNumber) {
-
-    typedef Teuchos::OrdinalTraits<GO> OTGO;
-    const auto myRank = this->comm_->getRank();
-
-#ifdef UNDERLYING_LIB_TPETRA
-    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
-#endif
-    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
-    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr.is_null(), std::runtime_error, "Mesh is not of type unstructured.");
-
-    auto ne = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumElementsGlobal());
-    // Number of nodes in the mesh
-    auto nn = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumGlobalNodes());
-
-    // Setup for paritioning with metis
-    vec_idx_Type eptrVec(0); // Vector for local elements ptr (local is still global at this point)
-    vec_idx_Type eindVec(0); // Vector for local elements ids
-    // Serially distributed elements
-    const auto elementsMesh = meshUnstr->getElementsC();
-    // Fill the arrays
-    makeContinuousElements(elementsMesh, eindVec, eptrVec);
-    auto eptr = &eptrVec.at(0);
-    auto eind = &eindVec.at(0);
-
-    // Number of common nodes required to classify two elements as neighbours: min(ncommon, n1-1, n2-1)
-    idx_t ncommon;
-    const auto dim = meshUnstr->getDimension();
-    const auto FEType = domains_[meshNumber]->getFEType();
-    if (dim == 2) {
-        if (FEType == "P1") {
-            ncommon = 2;
-        } else if (FEType == "P2") {
-            ncommon = 3;
-        }
-    } else if (dim == 3) {
-        if (FEType == "P1") {
-            ncommon = 3;
-        } else if (FEType == "P2") {
-            ncommon = 6;
-        }
-    } else
-        TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "Wrong Dimension.");
-
-    idx_t numflag = 0;
-
-    // Arrays for storing the partition
-    // METIS allocates these using malloc
-    idx_t *xadj;
-    idx_t *adjncy;
-
-    if (myRank == 0) {
-        cout << "--- Building dual graph with METIS ...";
-    }
-    const auto returnCode = METIS_MeshToDual(&ne, &nn, eptr, eind, &ncommon, &numflag, &xadj, &adjncy);
-
-    if (myRank == 0) {
-        cout << "\n--\t Metis return code: " << returnCode;
-        cout << "\n--- done" << endl;
-    }
-
-    const auto locReplMap = Xpetra::MapFactory<LO, GO, NO>::createLocalMap(underlyingLibType, ne, this->comm_);
-    meshUnstr->elementMap_.reset(new Map<LO, GO, NO>(locReplMap));
-
-    // Copy idx_t arrays to ArrayRCP arrays required by graph constructor
-    auto xadjArrayRCP = Teuchos::ArrayRCP<size_t>(ne + 1);
-    for (auto i = 0; i < xadjArrayRCP.size(); i++) {
-        xadjArrayRCP[i] = xadj[i];
-    }
-    // Size of adjncy is stored in last entry of xadj
-    auto adjncyArrayRCP = Teuchos::ArrayRCP<LO>(xadj[ne]);
-    for (auto i = 0; i < adjncyArrayRCP.size(); i++) {
-        adjncyArrayRCP[i] = adjncy[i];
-    }
-
-    // Both row and column maps are unity
-    // All entries are on all ranks
-    const auto xpetraElementMap = meshUnstr->getElementMap()->getXpetraMap();
-    meshUnstr->dualGraph_ =
-        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(xpetraElementMap, xpetraElementMap, xadjArrayRCP, adjncyArrayRCP);
-    meshUnstr->dualGraph_->fillComplete();
-    METIS_Free(xadj);
-    METIS_Free(adjncy);
-}
-
-template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int meshNumber, const int overlap) {
-
-    typedef Teuchos::OrdinalTraits<GO> OTGO;
-#ifdef UNDERLYING_LIB_TPETRA
-    const string underlyingLib = "Tpetra";
-    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
-#endif
-
-    const auto myRank = this->comm_->getRank();
-    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
-
-    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr.is_null(), std::runtime_error, "Mesh is not of type unstructured.");
-    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr->dualGraph_.is_null(), std::runtime_error,
-                               "Attempting to partition non-existent dual graph. Ensure dual graph has been "
-                               "constructed e.g. with buildDualGraph()");
-    // Ensure that dual graph is not yet partitioned
-    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr->elementMap_->getXpetraMap()->isDistributed(), std::runtime_error,
-                               "Dual graph is already partitioned. Can only partition locally replicated graph.");
-
-    const int indexBase = 0;
-    // Number of elements in the mesh = number of vertices in the dual graph
-    auto nvtxs = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumElementsGlobal());
-    // Balancing constraints. Simple vertex balancing here i.e. one weight per vertex
-    idx_t ncon = 1;
-
-    // Row indices of the CRS format
-    const auto ptrTpetraCrsGraph = Teuchos::rcp_dynamic_cast<Xpetra::TpetraCrsGraph<LO, GO, NO>>(meshUnstr->dualGraph_);
-    TEUCHOS_TEST_FOR_EXCEPTION(ptrTpetraCrsGraph.is_null(), std::runtime_error,
-                               "Using dual graph requires Tpetra. It seems you are using Epetra.")
-    const auto xadjRCPVec = ptrTpetraCrsGraph->getNodeRowPtrs();
-
-    // Note that using std::move here might be more efficient
-    vec_idx_Type xadjVec(xadjRCPVec.begin(), xadjRCPVec.end());
-
-    // Column indices of the CRS format
-    // Size is stored at the end of the row indices
-    vec_idx_Type adjncyVec(xadjVec.back());
-    Teuchos::ArrayView<const LO> tempRowView;
-
-    for (auto i = 0; i < nvtxs; i++) {
-        meshUnstr->dualGraph_->getLocalRowView(i, tempRowView);
-        // Not using std::move so that dualGraph remains valid for later use
-        std::copy(tempRowView.begin(), tempRowView.end(), adjncyVec.begin() + xadjVec[i]);
-    }
-
-    idx_t *xadj = xadjVec.data();
-    idx_t *adjncy = adjncyVec.data();
-
-    idx_t options[METIS_NOPTIONS];
-    METIS_SetDefaultOptions(options);
-    // Edge cut minimization
-    options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT;
-    // Random matching during coarsening
-    options[METIS_OPTION_CTYPE] = METIS_CTYPE_RM;
-    // Initial partitioning algo
-    /* options[METIS_OPTION_IPTYPE] */
-    // Refinement algo
-    /* options[METIS_OPTION_RTYPE] */
-    // Perform two hop matching if normal matching does not work
-    /* options[METIS_OPTION_NO2HOP] */
-    // Specify how many times to partition. Best partition is chosen. Default = 1
-    /* options[METIS_OPTION_NCUTS] */
-    // Iterations of refinement algos at each uncoarsening step. Default = 10
-    options[METIS_OPTION_NITER] = 10;
-    // Allowed load imbalance
-    /* options[METIS_OPTION_UFACTOR] */
-    // Minimize maximum connectivity between subdomains. 1 = explicitly minimize
-    options[METIS_OPTION_MINCONN] = 0;
-    // Try to produce contiguous partitions i.e. no reordering of the connectivity matrix
-    options[METIS_OPTION_CONTIG] = pList_->get("Contiguous", false);
-    // See for random number generator
-    options[METIS_OPTION_SEED] = 44;
-    // Start at zero or one
-    options[METIS_OPTION_NUMBERING] = indexBase;
-    // Verbosity level during execution of the algo
-    options[METIS_OPTION_DBGLVL] = 0;
-
-    idx_t edgecut = 0;
-    vec_idx_Type partVec(nvtxs, -1);
-    auto part = partVec.data();
-
-    // Number of available ranks = number of parts to partition into
-    idx_t nparts = get<1>(rankRanges_[meshNumber]) - get<0>(rankRanges_[meshNumber]) + 1;
-
-    if (myRank == 0) {
-        cout << "--- Partitioning dual graph with METIS ... \n";
-    }
-
-    if (nparts > 1) {
-        idx_t returnCode = METIS_PartGraphKway(&nvtxs, &ncon, xadj, adjncy, NULL, NULL, NULL, &nparts, NULL, NULL,
-                                               options, &edgecut, part);
-        if (myRank == 0) {
-            cout << "\n--\t Metis return code: " << returnCode;
-        }
-    } else {
-        for (auto &temp : partVec) {
-            temp = 0;
-        }
-    }
-
-    if (myRank == 0) {
-        cout << "\n--\t objval: " << edgecut;
-        cout << "\n-- done!" << endl;
-    }
-    // We need the distributed dual graph to be able to perform assembly on each subdomain
-    // The dual graph map is the same as the element map, so update that here
-    vec_GO_Type locepart(0);
-    for (auto i = 0; i < nvtxs; i++) {
-        // Subtract start of the rank range to map required ranks to interval starting at zero
-        if (part[i] == this->comm_->getRank() - get<0>(this->rankRanges_[meshNumber])) {
-            locepart.push_back(i);
-        }
-    }
-    // elementsGlobalMapping -> elements per Processor i.e. global indices of the elements owned by the current rank
-    // Pass invalid since the global number of elements is unknown (includes repetition across the ranks)
-    // TODO kho is this the right way to use invalid?
-    Teuchos::ArrayView<GO> elementsGlobalMapping = Teuchos::arrayViewFromVector(locepart);
-    const auto newMap =
-        Teuchos::rcp(new Map(underlyingLib, OTGO::invalid(), elementsGlobalMapping, indexBase, this->comm_));
-
-    // Create an export object since the target map is one to one but the source map may not be
-    const auto exporter =
-        Xpetra::ExportFactory<LO, GO, NO>::Build(meshUnstr->elementMap_->getXpetraMap(), newMap->getXpetraMap());
-
-    // New graph into which the previous graph will be imported
-    auto newGraph = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(newMap->getXpetraMap(), newMap->getNodeNumElements());
-    // Need to dynamic cast to TpetraCrsGraph for doExport(). Required for good error messages when using Epetra
-    auto newTpetraGraph = Teuchos::rcp_dynamic_cast<Xpetra::TpetraCrsGraph<LO, GO, NO>>(newGraph);
-    TEUCHOS_TEST_FOR_EXCEPTION(newTpetraGraph.is_null(), std::runtime_error,
-                               "It seems you are not using Tpetra as required");
-    newTpetraGraph->doExport(*meshUnstr->dualGraph_, *exporter, Xpetra::INSERT);
-    newTpetraGraph->fillComplete();
-
-    /* if (myRank == 0) { */
-    /*     cout << "Before extending #############################\n"; */
-    /* } */
-    /* Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
-    /* newGraph->describe(*out, Teuchos::VERB_EXTREME); */
-
-    // Cast to pointer-to-const for FROSch function
-    auto newExtendedGraph = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(newGraph);
-    auto newExtendedMap = Teuchos::rcp_implicit_cast<const Xpetra::Map<LO, GO, NO>>(newMap->getXpetraMap());
-
-    // Extend overlap by specified number of times
-    for (auto i = 0; i < overlap; i++) {
-        FROSch::ExtendOverlapByOneLayer(newExtendedGraph, newExtendedGraph->getColMap(), newExtendedGraph,
-                                        newExtendedMap);
-    }
-
-    // Remove constness. Dangerous and should not usually be done
-    // Exception here because graph was only made const for ExtendOverlapByOneLayer()
-    meshUnstr->dualGraph_ = Teuchos::rcp_const_cast<Xpetra::CrsGraph<LO, GO, NO>>(newExtendedGraph);
-
-    meshUnstr->elementMap_ = Teuchos::rcp(new Map(newExtendedMap));
-
-    /* if (myRank == 0) { */
-    /*     cout << "After extending #############################\n"; */
-    /* } */
-    /* meshUnstr->elementMap_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
-    /* meshUnstr->dualGraph_->describe(*out, Teuchos::VERB_EXTREME); */
-
-    // TODO This is done in readAndPartitionMesh(), but does it need doing here?
-    //  Update the points maps, build the elements and edges as in readAndPartitionMesh
-    //  Consider putting this in a seperate function
-}
-
-template <class SC, class LO, class GO, class NO>
 void MeshPartitioner<SC, LO, GO, NO>::setLocalEdgeIndices(vec2D_int_Type &localEdgeIndices) {
     if (dim_ == 2) {
         localEdgeIndices.resize(3, vec_int_Type(2, -1));
@@ -1253,6 +973,407 @@ void MeshPartitioner<SC, LO, GO, NO>::setLocalSurfaceIndices(vec2D_int_Type &loc
         } else
             TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "No permutation for this surface yet.");
     }
+}
+
+// ######################## Nonlinear Schwarz related methods ##########################
+
+/**
+ * \brief Reads mesh data from a .mesh file for each domain (e.g. velocity and pressure)
+ *
+ */
+template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, GO, NO>::readMesh(const int volumeID) {
+    if (volumeID != 10) {
+        if (this->comm_->getRank() == 0) {
+            cout << " #### WARNING: The volumeID was set manually and is no longer 10. Please make sure your volumeID "
+                    "corresponds to the volumeID in your mesh file. #### "
+                 << endl;
+        }
+    }
+    const auto delimiter = pList_->get("Delimiter", " ");
+    for (int i = 0; i < domains_.size(); i++) {
+        const auto meshName = pList_->get("Mesh " + std::to_string(i + 1) + " Name", "noName");
+        TEUCHOS_TEST_FOR_EXCEPTION(meshName == "noName", std::runtime_error, "No mesh name given.");
+        domains_[i]->initializeUnstructuredMesh(domains_[i]->getDimension(), "P1",
+                                                volumeID); // we only allow to read P1 meshes.
+        domains_[i]->readMeshSize(meshName, delimiter);
+    }
+
+    // Determine an allocation of ranks to meshes
+    determineRanks();
+
+    for (int i = 0; i < domains_.size(); i++) {
+        auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(domains_[i]->getMesh());
+        // Reading nodes
+        meshUnstr->readMeshEntity("node");
+        // Reset repeated elements. They are determined when partitioning the mesh.
+        meshUnstr->pointsRep_.reset();
+        // Reading elements
+        meshUnstr->readMeshEntity("element");
+        // Reading surfaces
+        meshUnstr->readMeshEntity("surface");
+        // Reading line segments
+        meshUnstr->readMeshEntity("line");
+    }
+}
+
+template <class SC, class LO, class GO, class NO>
+void MeshPartitioner<SC, LO, GO, NO>::buildDualGraph(const int meshNumber) {
+
+    typedef Teuchos::OrdinalTraits<GO> OTGO;
+    const auto myRank = this->comm_->getRank();
+
+#ifdef UNDERLYING_LIB_TPETRA
+    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
+#endif
+    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr.is_null(), std::runtime_error, "Mesh is not of type unstructured.");
+
+    // Number of elements in the mesh
+    auto ne = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumElementsGlobal());
+    // Number of nodes in the mesh
+    auto nn = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumGlobalNodes());
+
+    // Setup for paritioning with metis
+    vec_idx_Type eptrVec(0); // Vector for local elements ptr (local is still global at this point)
+    vec_idx_Type eindVec(0); // Vector for local elements ids
+    // Serially distributed elements
+    const auto elementsMesh = meshUnstr->getElementsC();
+    // Fill the arrays
+    makeContinuousElements(elementsMesh, eindVec, eptrVec);
+    auto eptr = &eptrVec.at(0);
+    auto eind = &eindVec.at(0);
+
+    // Number of common nodes required to classify two elements as neighbours: min(ncommon, n1-1, n2-1)
+    idx_t ncommon;
+    const auto dim = meshUnstr->getDimension();
+    const auto FEType = domains_[meshNumber]->getFEType();
+    if (dim == 2) {
+        if (FEType == "P1") {
+            ncommon = 2;
+        } else if (FEType == "P2") {
+            ncommon = 3;
+        }
+    } else if (dim == 3) {
+        if (FEType == "P1") {
+            ncommon = 3;
+        } else if (FEType == "P2") {
+            ncommon = 6;
+        }
+    } else
+        TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "Wrong Dimension.");
+
+    idx_t numflag = 0;
+
+    // Arrays for storing the partition
+    // METIS allocates these using malloc
+    idx_t *xadj;
+    idx_t *adjncy;
+
+    if (myRank == 0) {
+        cout << "--- Building dual graph with METIS ...";
+    }
+    const auto returnCode = METIS_MeshToDual(&ne, &nn, eptr, eind, &ncommon, &numflag, &xadj, &adjncy);
+
+    if (myRank == 0) {
+        cout << "\n--\t Metis return code: " << returnCode;
+        cout << "\n--- done" << endl;
+    }
+
+    const auto locReplMap = Xpetra::MapFactory<LO, GO, NO>::createLocalMap(underlyingLibType, ne, this->comm_);
+    meshUnstr->elementMap_.reset(new Map<LO, GO, NO>(locReplMap));
+
+    // Copy idx_t arrays to ArrayRCP arrays required by graph constructor
+    auto xadjArrayRCP = Teuchos::ArrayRCP<size_t>(ne + 1);
+    for (auto i = 0; i < xadjArrayRCP.size(); i++) {
+        xadjArrayRCP[i] = xadj[i];
+    }
+    // Size of adjncy is stored in last entry of xadj
+    auto adjncyArrayRCP = Teuchos::ArrayRCP<LO>(xadj[ne]);
+    for (auto i = 0; i < adjncyArrayRCP.size(); i++) {
+        adjncyArrayRCP[i] = adjncy[i];
+    }
+
+    // Both row and column maps are unity
+    // All entries are on all ranks
+    const auto xpetraElementMap = meshUnstr->getElementMap()->getXpetraMap();
+    meshUnstr->dualGraph_ =
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(xpetraElementMap, xpetraElementMap, xadjArrayRCP, adjncyArrayRCP);
+    meshUnstr->dualGraph_->fillComplete();
+    METIS_Free(xadj);
+    METIS_Free(adjncy);
+}
+
+template <class SC, class LO, class GO, class NO>
+void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int meshNumber, const int overlap) {
+
+    Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::VerboseObjectBase::getDefaultOStream();
+    typedef Teuchos::OrdinalTraits<GO> OTGO;
+#ifdef UNDERLYING_LIB_TPETRA
+    const string underlyingLib = "Tpetra";
+    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
+#endif
+
+    const auto myRank = this->comm_->getRank();
+    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
+
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr.is_null(), std::runtime_error, "Mesh is not of type unstructured.");
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr->dualGraph_.is_null(), std::runtime_error,
+                               "Attempting to partition non-existent dual graph. Ensure dual graph has been "
+                               "constructed e.g. with buildDualGraph()");
+    // Ensure that dual graph is not yet partitioned
+    TEUCHOS_TEST_FOR_EXCEPTION(meshUnstr->elementMap_->getXpetraMap()->isDistributed(), std::runtime_error,
+                               "Dual graph is already partitioned. Can only partition locally replicated graph.");
+
+    const int indexBase = 0;
+    // Number of elements in the mesh = number of vertices in the dual graph
+    auto nvtxs = Teuchos::implicit_cast<idx_t>(meshUnstr->getNumElementsGlobal());
+    // Balancing constraints. Simple vertex balancing here i.e. one weight per vertex
+    idx_t ncon = 1;
+
+    // Row indices of the CRS format
+    const auto ptrTpetraCrsGraph = Teuchos::rcp_dynamic_cast<Xpetra::TpetraCrsGraph<LO, GO, NO>>(meshUnstr->dualGraph_);
+    TEUCHOS_TEST_FOR_EXCEPTION(ptrTpetraCrsGraph.is_null(), std::runtime_error,
+                               "Using dual graph requires Tpetra. It seems you are using Epetra.")
+    const auto xadjRCPVec = ptrTpetraCrsGraph->getNodeRowPtrs();
+
+    // Note that using std::move here might be more efficient
+    vec_idx_Type xadjVec(xadjRCPVec.begin(), xadjRCPVec.end());
+
+    // Column indices of the CRS format
+    // Size is stored at the end of the row indices
+    vec_idx_Type adjncyVec(xadjVec.back());
+    Teuchos::ArrayView<const LO> tempRowView;
+
+    for (auto i = 0; i < nvtxs; i++) {
+        meshUnstr->dualGraph_->getLocalRowView(i, tempRowView);
+        // Not using std::move so that dualGraph remains valid for later use
+        std::copy(tempRowView.begin(), tempRowView.end(), adjncyVec.begin() + xadjVec[i]);
+    }
+
+    idx_t *xadj = xadjVec.data();
+    idx_t *adjncy = adjncyVec.data();
+
+    idx_t options[METIS_NOPTIONS];
+    METIS_SetDefaultOptions(options);
+    // Edge cut minimization
+    options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT;
+    // Random matching during coarsening
+    options[METIS_OPTION_CTYPE] = METIS_CTYPE_RM;
+    // Initial partitioning algo
+    /* options[METIS_OPTION_IPTYPE] */
+    // Refinement algo
+    /* options[METIS_OPTION_RTYPE] */
+    // Perform two hop matching if normal matching does not work
+    /* options[METIS_OPTION_NO2HOP] */
+    // Specify how many times to partition. Best partition is chosen. Default = 1
+    /* options[METIS_OPTION_NCUTS] */
+    // Iterations of refinement algos at each uncoarsening step. Default = 10
+    options[METIS_OPTION_NITER] = 10;
+    // Allowed load imbalance
+    /* options[METIS_OPTION_UFACTOR] */
+    // Minimize maximum connectivity between subdomains. 1 = explicitly minimize
+    options[METIS_OPTION_MINCONN] = 0;
+    // Try to produce contiguous partitions i.e. no reordering of the connectivity matrix
+    options[METIS_OPTION_CONTIG] = pList_->get("Contiguous", false);
+    // Seed for random number generator
+    options[METIS_OPTION_SEED] = 44;
+    // Start at zero or one
+    options[METIS_OPTION_NUMBERING] = indexBase;
+    // Verbosity level during execution of the algo
+    options[METIS_OPTION_DBGLVL] = 0;
+
+    idx_t edgecut = 0;
+    vec_idx_Type partVec(nvtxs, -1);
+    auto part = partVec.data();
+
+    // Number of available ranks = number of parts to partition into
+    idx_t nparts = get<1>(rankRanges_[meshNumber]) - get<0>(rankRanges_[meshNumber]) + 1;
+
+    if (myRank == 0) {
+        cout << "--- Partitioning dual graph with METIS ... \n";
+    }
+
+    if (nparts > 1) {
+        idx_t returnCode = METIS_PartGraphKway(&nvtxs, &ncon, xadj, adjncy, NULL, NULL, NULL, &nparts, NULL, NULL,
+                                               options, &edgecut, part);
+        if (myRank == 0) {
+            cout << "\n--\t Metis return code: " << returnCode;
+        }
+    } else {
+        for (auto &temp : partVec) {
+            temp = 0;
+        }
+    }
+
+    if (myRank == 0) {
+        cout << "\n--\t objval: " << edgecut;
+        cout << "\n-- done!" << endl;
+    }
+    // We need the distributed dual graph to be able to perform assembly on each subdomain
+    // The dual graph map is the same as the element map, so update that here
+    vec_GO_Type locepart(0);
+    for (auto i = 0; i < nvtxs; i++) {
+        // Subtract start of the rank range to map required ranks to interval starting at zero
+        if (part[i] == this->comm_->getRank() - get<0>(this->rankRanges_[meshNumber])) {
+            locepart.push_back(i);
+        }
+    }
+    // elementsGlobalMapping -> elements per Processor i.e. global indices of the elements owned by the current rank
+    // Pass invalid since the global number of elements is unknown (includes repetition across the ranks)
+    Teuchos::ArrayView<GO> elementsGlobalMapping = Teuchos::arrayViewFromVector(locepart);
+    auto newElementMap = Xpetra::MapFactory<LO, GO, NO>::Build(underlyingLibType, OTGO::invalid(),
+                                                               elementsGlobalMapping, indexBase, this->comm_);
+
+    // Create an export object since the target map is one to one but the source map may not be
+    const auto exporter =
+        Xpetra::ExportFactory<LO, GO, NO>::Build(meshUnstr->elementMap_->getXpetraMap(), newElementMap);
+
+    // New graph into which the previous graph will be imported
+    auto newDualGraph = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(newElementMap, newElementMap->getLocalNumElements());
+    newDualGraph->doExport(*meshUnstr->dualGraph_, *exporter, Xpetra::INSERT);
+    newDualGraph->fillComplete();
+
+    // Export operation complete so we can overwrite the old element mapRepeated
+    meshUnstr->elementMap_.reset(
+        new Map(underlyingLib, OTGO::invalid(), elementsGlobalMapping, indexBase, this->comm_));
+
+    /* if (myRank == 0) { */
+    /*     cout << "Before extending #############################\n"; */
+    /* } */
+    /* newDualGraph->describe(*out, Teuchos::VERB_EXTREME); */
+
+    // TODO KHo build repeated and unique maps and element and point lists before increasing overlap
+    //  Cast to pointer-to-const for FROSch function
+    auto graphExtended = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(newDualGraph);
+
+    // Extend overlap by specified number of times
+    // Extend by an extra layer here which is needed for local assembly on each subdomain
+    for (auto i = 0; i < overlap+1; i++) {
+        ExtendOverlapByOneLayer(graphExtended, graphExtended);
+    }
+
+    // Sort extended map
+    auto extendedElementMap = FROSch::SortMapByGlobalIndex(graphExtended->getRowMap());
+
+    // Build graph with sorted map
+    newDualGraph =
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, extendedElementMap->getLocalNumElements());
+    Teuchos::RCP<Xpetra::Import<LO, GO, NO>> importer =
+        Xpetra::ImportFactory<LO, GO, NO>::Build(graphExtended->getRowMap(), extendedElementMap);
+    newDualGraph->doImport(*graphExtended, *importer, Xpetra::ADD);
+    newDualGraph->fillComplete(graphExtended->getDomainMap(), graphExtended->getRangeMap());
+
+    meshUnstr->dualGraph_ = newDualGraph;
+    meshUnstr->elementMapOverlapping_.reset(new Map(extendedElementMap));
+
+    /* if (myRank == 0) { */
+    /*     cout << "After extending #############################\n"; */
+    /* } */
+    /* meshUnstr->dualGraph_->describe(*out, Teuchos::VERB_EXTREME); */
+    /* if (myRank == 0) { */
+    /*     cout << "Maps #############################\n"; */
+    /* } */
+    /* meshUnstr->elementMap_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
+    /* meshUnstr->elementMapOverlapping_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
+}
+
+template <class SC, class LO, class GO, class NO>
+void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int meshNumber) {
+
+    typedef Teuchos::OrdinalTraits<GO> OTGO;
+#ifdef UNDERLYING_LIB_TPETRA
+    const string underlyingLib = "Tpetra";
+    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
+#endif
+
+    const auto myRank = this->comm_->getRank();
+    const auto meshUnstr = Teuchos::rcp_dynamic_cast<MeshUnstr_Type>(this->domains_[meshNumber]->getMesh());
+    const auto dim = meshUnstr->getDimension();
+    const auto FEType = domains_[meshNumber]->getFEType();
+    const auto elementMap = meshUnstr->getElementMap();
+    const auto elementMapOverlapping = meshUnstr->getElementMapOverlapping();
+    const int indexBase = 0;
+
+    idx_t ne = meshUnstr->getNumElementsGlobal(); // Global number of elements
+    idx_t nn = meshUnstr->getNumGlobalNodes();    // Global number of nodes
+
+    // Build index vectors for the elements which can then be used to build the elements in the current subdomain.
+    vec_idx_Type eptrVec(0); // Vector for local elements ptr (local is still global at this point)
+    vec_idx_Type eindVec(0); // Vector for local elements ids
+    // Serially distributed elements
+    const auto elementsMesh = meshUnstr->getElementsC();
+    // Fill the arrays
+    makeContinuousElements(elementsMesh, eindVec, eptrVec);
+
+    // Fill repeated and overlapping maps of nodes
+    vec_GO_Type pointsRepIndices(0);
+    vec_GO_Type pointsOverlappingIndices(0);
+
+    // Iterate over elementsMap_
+    for (auto i = 0; i < elementMap->getNodeNumElements(); i++) {
+        // Get the global index of i
+        auto globalID = elementMap->getGlobalElement(i);
+        // For each element add the indices corresponding to that element
+        for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
+            pointsRepIndices.push_back(eindVec.at(j)); // Ids of element nodes, globalIDs
+        }
+    }
+
+    // Do the same for elementMapOverlapping_
+    for (auto i = 0; i < elementMapOverlapping->getNodeNumElements(); i++) {
+        // Get the global index of i
+        auto globalID = elementMapOverlapping->getGlobalElement(i);
+        // For each element add the indices corresponding to that element
+        for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
+            pointsOverlappingIndices.push_back(eindVec.at(j)); // Ids of element nodes, globalIDs
+        }
+    }
+
+    make_unique(pointsRepIndices);
+    make_unique(pointsOverlappingIndices);
+
+    auto pointsRepIndicesView = Teuchos::arrayViewFromVector(pointsRepIndices);
+    auto pointsOverlappingIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingIndices);
+
+    // Set the repeated and overlapping maps
+    meshUnstr->mapRepeated_.reset(
+        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsRepIndicesView, indexBase, this->comm_));
+    meshUnstr->mapOverlapping_.reset(
+        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingIndicesView, indexBase, this->comm_));
+
+    // Fill elementsC_ with the elements assigned to this subdomain
+    meshUnstr->elementsC_.reset(new Elements(FEType, dim));
+
+    // This could be done in the previous loop by adding a counter to emulate
+    // elementMapOverlapping_->getGlobalElement(i).
+    for (auto i = 0; i < elementMapOverlapping->getNodeNumElements(); i++) {
+        // Build local element and save
+        std::vector<int> tmpElement;
+        auto globalID = elementMapOverlapping->getGlobalElement(i);
+        // Iterate over the nodes in an element
+        for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
+            // Map the node index from global to local and save
+            int index = meshUnstr->mapOverlapping_->getLocalElement(Teuchos::implicit_cast<long long>(eindVec.at(j)));
+            tmpElement.push_back(index);
+        }
+        FiniteElement fe(tmpElement, elementsMesh->getElement(elementMapOverlapping->getGlobalElement(i)).getFlag());
+        // TODO KHo are surfaces needed here? If so, then add them here.
+        meshUnstr->elementsC_->addElement(fe);
+    }
+    if (myRank == 0) {
+        std::cout << "elementMap ##########################\n";
+    }
+    meshUnstr->elementMap_->print();
+    /* meshUnstr->mapRepeated_->print(); */
+    /* if (myRank == 0) { */
+    /*     std::cout << "elementMapOverlapping ##########################\n"; */
+    /* } */
+    /* meshUnstr->elementMapOverlapping_->print(); */
+    /* meshUnstr->mapOverlapping_->print(); */
+    /* if (myRank == 0) { */
+    /*     std::cout << "elementsC_ ##########################\n"; */
+    /* } */
+    /* meshUnstr->elementsC_->print(); */
 }
 
 } // namespace FEDD

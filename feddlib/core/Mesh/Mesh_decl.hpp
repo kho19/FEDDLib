@@ -143,13 +143,20 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     */
     vec2D_int_ptr_Type getElements();
 
+
+    //##################### Nonlinear Schwarz related functions ###############
+    MapConstPtr_Type getElementMapOverlapping();
+    MapConstPtr_Type getMapOverlapping();
+
     /* ###################################################################### */
 
     int dim_;
     long long numElementsGlob_;
 
     std::string FEType_;
+    // Unique partition of vertices based on mapRepeated_
     MapPtr_Type mapUnique_;
+    // Nonoverlapping partition of elements. Repeated because subdomain interface vertices are shared.
     MapPtr_Type mapRepeated_;
     vec2D_dbl_ptr_Type pointsRep_;
     vec2D_dbl_ptr_Type pointsUni_;
@@ -173,8 +180,6 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     vec2D_dbl_ptr_Type pointsRepRef_; // Repeated reference configuration
     vec2D_dbl_ptr_Type pointsUniRef_; // Unique reference configuration
 
-    // dualGraph_ does not need a map since its row map = elementMap_
-    GraphPtr_Type dualGraph_;
     MapPtr_Type mapUniqueP2Map_;
     MapPtr_Type mapRepeatedP2Map_;
 
@@ -187,6 +192,14 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     AABBTreePtr_Type AABBTree_;
 
     tuple_intint_Type rankRange_;
+
+    // Nonlinear Schwarz related member variables
+    // dualGraph_ does not need its own map since its row map = elementMapOverlapping_
+    GraphPtr_Type dualGraph_;
+    // contents of elementsC_ built according to this map in nonlinear Schwarz
+    MapPtr_Type elementMapOverlapping_;
+    // Overlapping partition of nodes for nonlinear Schwarz method
+    MapPtr_Type mapOverlapping_;
 
     /* ###################################################################### */
 private:

@@ -23,6 +23,27 @@ DEST_FILES rectangle.mesh rectangle.mesh
 EXEDEPS AABBTree
 )
 
+### dual_graph_partitioning_stack
+TRIBITS_ADD_EXECUTABLE(
+	dual_graph_partitioning_stack
+	SOURCES dual_graph_partitioning_stack.cpp
+)
+
+TRIBITS_ADD_TEST(
+	dual_graph_partitioning_stack
+	NAME dual_graph_partitioning_stack
+    	ARGS
+    	NUM_MPI_PROCS 4
+)
+
+TRIBITS_COPY_FILES_TO_BINARY_DIR(meshes_dual_graph_partitioning_stack
+   SOURCE_DIR ${CMAKE_SOURCE_DIR}/meshes
+   SOURCE_FILES simple_square.mesh simple_square.mesh
+   DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
+   DEST_FILES simple_square.mesh simple_square.mesh
+   EXEDEPS dual_graph_partitioning_stack
+)
+
 ### mesh_AABBTree
 TRIBITS_ADD_EXECUTABLE(
 mesh_AABBTree

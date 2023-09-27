@@ -542,7 +542,14 @@ public:
    /// @param name export suffix to identify flags
    void exportNodeFlags(string name = "default");
 
-   /* ----------------------------------------------------------------------------------------*/
+   
+
+// ################### Nonlinear Schwarz functions ######################
+MapConstPtr_Type getElementMapOverlapping() const;
+
+MapConstPtr_Type getMapOverlapping() const;
+
+/* ----------------------------------------------------------------------------------------*/
 
    private:
    CommConstPtr_Type comm_; // underlying comm

@@ -1048,5 +1048,18 @@ void Domain<SC, LO, GO, NO>::exportElementFlags(string name)
 
 }   
     
+// ################# Nonlinear Schwarz functions #################
+template <class SC, class LO, class GO, class NO>
+typename Domain<SC,LO,GO,NO>::MapConstPtr_Type Domain<SC,LO,GO,NO>::getElementMapOverlapping() const{
+
+    return mesh_->getElementMapOverlapping();
+}
+
+template <class SC, class LO, class GO, class NO>
+typename Domain<SC,LO,GO,NO>::MapConstPtr_Type Domain<SC,LO,GO,NO>::getMapOverlapping() const{
+
+    return mesh_->getMapOverlapping();
+}
+
 }
 #endif

@@ -266,8 +266,8 @@ void NonLinLaplace<SC, LO, GO, NO>::calculateNonLinResidualVec(std::string type,
         /* this->solution_->getBlock(0)->print(); */
 
         this->residualVec_->update(1., *this->rhs_, -1.);
-        std::cout << "Solution in NonLinLaplace!!!!!!!!!!!!!!!!!!!!!!\n";
-        this->solution_->getBlock(0)->print();
+        /* std::cout << "Solution in NonLinLaplace!!!!!!!!!!!!!!!!!!!!!!\n"; */
+        /* this->solution_->getBlock(0)->print(); */
 
         // Sets the residualVec_ at the boundary = boundary condition - solution
         // Necessary since reAssemble("Rhs") only assembles the residual on
