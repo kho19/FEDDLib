@@ -54,6 +54,8 @@ public:
     typedef typename Mesh_Type::Elements_Type Elements_Type;
     typedef typename Mesh_Type::ElementsPtr_Type ElementsPtr_Type;
             
+    typedef typename Mesh_Type::GraphPtr_Type GraphPtr_Type;
+
     typedef MultiVector<SC,LO,GO,NO> MultiVector_Type;
     typedef Teuchos::RCP<MultiVector_Type> MultiVectorPtr_Type;
 	typedef Teuchos::RCP<const MultiVector_Type> MultiVectorPtrConst_Type;
@@ -548,6 +550,10 @@ public:
 MapConstPtr_Type getElementMapOverlapping() const;
 
 MapConstPtr_Type getMapOverlapping() const;
+
+GraphPtr_Type getDualGraph() const;
+
+void setComm(CommConstPtr_Type newComm) const {this->comm_ = newComm;}
 
 /* ----------------------------------------------------------------------------------------*/
 

@@ -23,7 +23,7 @@ Defintion of Mesh
 @copyright CH
 */
 
-// TODO public data fields and corresponding getter functions are superfluous. Either make members private or remove
+// TODO KHo public data fields and corresponding getter functions are superfluous. Either make members private or remove
 // getters
 namespace FEDD {
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no> class Mesh {
@@ -83,7 +83,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     MapConstPtr_Type getMapRepeatedP2() const;
 
-    MapConstPtr_Type getElementMap();
+    MapConstPtr_Type getElementMap() const;
 
     MapConstPtr_Type getEdgeMap(); // Edge Map
 
@@ -121,7 +121,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     void moveMesh(MultiVectorPtr_Type displacementUnique, MultiVectorPtr_Type displacementRepeated);
 
-    // Creates an AABBTree from own vertice- and elementlist.
+    // Creates an AABBTree from own vertice and elementlist.
     void create_AABBTree();
 
     vec_int_ptr_Type findElemsForPoints(vec2D_dbl_ptr_Type query_points);
@@ -143,11 +143,13 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     */
     vec2D_int_ptr_Type getElements();
 
+    // ##################### Nonlinear Schwarz related functions ###############
+    MapConstPtr_Type getElementMapOverlapping() const;
+    MapConstPtr_Type getMapOverlapping() const;
 
-    //##################### Nonlinear Schwarz related functions ###############
-    MapConstPtr_Type getElementMapOverlapping();
-    MapConstPtr_Type getMapOverlapping();
-
+    // Have to make these const and the maps mutable to fit to the const structure of problem <- domain <- mesh
+    void replaceRepeatedMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const;
+    void replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const;
     /* ###################################################################### */
 
     int dim_;
@@ -155,11 +157,11 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     std::string FEType_;
     // Unique partition of vertices based on mapRepeated_
-    MapPtr_Type mapUnique_;
+    mutable MapPtr_Type mapUnique_;
     // Nonoverlapping partition of elements. Repeated because subdomain interface vertices are shared.
-    MapPtr_Type mapRepeated_;
-    vec2D_dbl_ptr_Type pointsRep_;
-    vec2D_dbl_ptr_Type pointsUni_;
+    mutable MapPtr_Type mapRepeated_;
+    mutable vec2D_dbl_ptr_Type pointsRep_;
+    mutable vec2D_dbl_ptr_Type pointsUni_;
     vec_int_ptr_Type bcFlagRep_;
     vec_int_ptr_Type bcFlagUni_;
 
@@ -171,7 +173,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     MapPtr_Type elementMap_;
     MapPtr_Type edgeMap_;
 
-    CommConstPtrConst_Type comm_;
+    mutable CommConstPtr_Type comm_;
 
     // 2D int vector (vector of int vectors) that stores element point indices
     // Rarely used and simpler than elementsC_
@@ -200,6 +202,9 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     MapPtr_Type elementMapOverlapping_;
     // Overlapping partition of nodes for nonlinear Schwarz method
     MapPtr_Type mapOverlapping_;
+    // List of points in the overlapping subdomain
+    vec2D_dbl_ptr_Type pointsOverlapping_;
+    vec_int_ptr_Type bcFlagOverlapping_;
 
     /* ###################################################################### */
 private:

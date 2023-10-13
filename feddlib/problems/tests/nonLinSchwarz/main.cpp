@@ -4,6 +4,9 @@
 #include "feddlib/core/General/ExporterParaView.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzOperator.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
@@ -148,29 +151,50 @@ int main(int argc, char *argv[]) {
     bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
 
-    /* auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll)); */
-    /**/
-    /* nonLinLaplace->addBoundaries(bcFactory); */
-    /**/
-    /* if (dim == 2) { */
-    /*     nonLinLaplace->addRhsFunction(oneFunc2D); */
-    /* } else if (dim == 3) { */
-    /*     nonLinLaplace->addRhsFunction(oneFunc3D); */
-    /* } */
+    auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
+
+    nonLinLaplace->addBoundaries(bcFactory);
+
+    if (dim == 2) {
+        nonLinLaplace->addRhsFunction(oneFunc2D);
+    } else if (dim == 3) {
+        nonLinLaplace->addRhsFunction(oneFunc3D);
+    }
     // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
     // between the subdomains
-    /* nonLinLaplace->initializeProblem(); */
+    nonLinLaplace->initializeProblem();
+    // Set initial guess
+    // If solving p-Laplace an initial guess with nonzero gradient must be provided. Use fromThyraMultiVector in this
+    // case.
+    /* nonLinLaplace->solution_->putScalar(1.); */
 
     // ########################
     // Solve the problem using nonlinear Schwarz
     // ########################
-    /* solve(nonLinLaplace); */
+    /* if (comm->getRank() == 0) { */
+        /* waitForGdbAttach<LO>(); */
+    /* } */
+    solve(nonLinLaplace);
 
     return (EXIT_SUCCESS);
 }
 
 // Solve the problem
 void solve(NonLinearProblemPtr_Type problem) {
+
+    // Define nonlinear Schwarz operator
+    auto domainVec = problem->getDomainVector();
+    auto mpiComm = domainVec.at(0)->getComm();
+    auto NonLinearSchwarzOp = Teuchos::rcp(
+        new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(mpiComm, problem->getParameterList(), problem));
+
+    // Set initial guess
+    auto initialU = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapOverlapping(), 1));
+    initialU->putScalar(0);
+    auto tempOut = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapOverlapping(), 1));
+    NonLinearSchwarzOp->initialize();
+
+    NonLinearSchwarzOp->apply(*initialU->getXpetraMultiVectorNonConst(), *tempOut->getXpetraMultiVectorNonConst());
     // Define convergence requirements
     double gmresIts = 0.;
     double residual0 = 1.;
@@ -180,30 +204,25 @@ void solve(NonLinearProblemPtr_Type problem) {
     int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
     double relativeResidual = residual / residual0;
 
-    // Set initial guess
-    // If solving p-Laplace an initial guess with nonzero gradient must be provided. Use fromThyraMultiVector in this
-    // case.
-    problem->solution_->putScalar(0.);
-
     // Outer Newton iterations
-    while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
-        // TODO solve the local problems. These are divided over the ranks, one problem per rank.
-        localAssembly(problem);
-        // TODO build the global Jacobian and rhs
-        //  Points to consider:
-        //   - The local problems are distributed, so building the global problem will require communicating these
-        //   - The global (linear) problem should be solved with gmres, the problem matrix should also be distributed.
-        //   Have to think of how to do this assembly plus redistribution.
-        //   - Do I actually assemble a matrix or build an operator that does the same thing as a matrix? Check how
-        //   FROSch achieves this with operators.
-        //   - Set the Problems system matrix and rhs to be the constructed global Jacobian and rhs. Then we can solve
-        //   the system as bellow.
-        //
-        // TODO solve using the linear solve method built into Problem. This can be specified in the xml file to be
-        // gmres together with a type of preconditioner (none in this case)
-        //
-        // TODO update the current solution
-    }
+    /* while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) { */
+    // TODO solve the local problems. These are divided over the ranks, one problem per rank.
+    /* localAssembly(problem); */
+    // TODO build the global Jacobian and rhs
+    //  Points to consider:
+    //   - The local problems are distributed, so building the global problem will require communicating these
+    //   - The global (linear) problem should be solved with gmres, the problem matrix should also be distributed.
+    //   Have to think of how to do this assembly plus redistribution.
+    //   - Do I actually assemble a matrix or build an operator that does the same thing as a matrix? Check how
+    //   FROSch achieves this with operators.
+    //   - Set the Problems system matrix and rhs to be the constructed global Jacobian and rhs. Then we can solve
+    //   the system as bellow.
+    //
+    // TODO solve using the linear solve method built into Problem. This can be specified in the xml file to be
+    // gmres together with a type of preconditioner (none in this case)
+    //
+    // TODO update the current solution
+    /* } */
 }
 
 // Solve the linear problem on the local overlapping subdomain

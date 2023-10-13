@@ -79,7 +79,7 @@ class MeshPartitioner {
     MeshPartitioner(DomainPtrArray_Type domains, ParameterListPtr_Type pL, std::string feType, int dimension);
 
     ~MeshPartitioner();
-    // TODO reading and partitioning of the mesh could be broken into separate private functions
+    // TODO KHo reading and partitioning of the mesh could be broken into separate private functions
     // readAndPartition could then combine these and e.g. read() and partition() functions could expose this
     // functionality
 
@@ -101,7 +101,7 @@ class MeshPartitioner {
             \brief Main function, that reads and partions and distributes the mesh to the different processors.
             Here all necessary maps and lists are created
     */
-    // TODO not implemented
+    // TODO KHo not implemented
     void partitionMesh(MeshUnstrPtr_Type &mesh, const int meshNumber);
 
     /*!

@@ -220,5 +220,16 @@ int ExtendOverlapByOneLayer(Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> inp
     outputGraph = tmpGraph.getConst();
     return 0;
 }
+
+template<typename T>
+void waitForGdbAttach(){
+ volatile T i = 0;
+    char hostname[256];
+    gethostname(hostname, sizeof(hostname));
+    printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    fflush(stdout);
+    while (0 == i)
+        sleep(5);
+}
 }
 #endif

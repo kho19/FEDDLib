@@ -2593,23 +2593,23 @@ void FE<SC, LO, GO, NO>::assemblyNonlinearLaplace(
             "Number Elements not the same as number assembleFE elements.");
     }
 
-    MultiVectorPtr_Type resVec_u;
-    BlockMultiVectorPtr_Type resVecRep;
+    // add new or overwrite existing block (0,0) of system matrix
+    // This is done in specific problem class for most other problems
+    // Placing it here instead as more fitting
+    MatrixPtr_Type A_block_zero_zero(
+        new Matrix_Type(this->domainVec_.at(0)->getMapUnique(),
+                        this->domainVec_.at(0)->getApproxEntriesPerRow()));
 
-    if (assembleMode != "Rhs") {
-        // add new or overwrite existing block (0,0) of system matrix
-        // This is done in specific problem class for most other problems
-        // Placing it here instead as more fitting
-        auto A_block_zero_zero = Teuchos::rcp(
-            new Matrix_Type(this->domainVec_.at(0)->getMapUnique(), this->domainVec_.at(0)->getApproxEntriesPerRow()));
+    A->addBlock(A_block_zero_zero, 0, 0);
 
-        A->addBlock(A_block_zero_zero, 0, 0);
-    } else {
-        // Or same for the residual vector
-        resVec_u = Teuchos::rcp(new MultiVector_Type(map, 1));
-        resVecRep = Teuchos::rcp(new BlockMultiVector_Type(1));
-        resVecRep->addBlock(resVec_u, 0);
-    }
+    // Repeat for the residual vector
+    MultiVectorPtr_Type resVec_u = Teuchos::rcp(
+        new MultiVector_Type(map, 1));
+
+    BlockMultiVectorPtr_Type resVecRep =
+        Teuchos::rcp(new BlockMultiVector_Type(1));
+    resVecRep->addBlock(resVec_u, 0);
+
     // Call assembly routines on each element
     for (UN T = 0; T < assemblyFEElements_.size(); T++) {
         vec_dbl_Type solution(0);

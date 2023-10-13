@@ -1006,7 +1006,7 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
         // Reading nodes
         meshUnstr->readMeshEntity("node");
         // Reset repeated elements. They are determined when partitioning the mesh.
-        meshUnstr->pointsRep_.reset();
+        /* meshUnstr->pointsRep_.reset(); */
         // Reading elements
         meshUnstr->readMeshEntity("element");
         // Reading surfaces
@@ -1248,7 +1248,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
 
     // Extend overlap by specified number of times
     // Extend by an extra layer here which is needed for local assembly on each subdomain
-    for (auto i = 0; i < overlap+1; i++) {
+    for (auto i = 0; i < overlap + 1; i++) {
         ExtendOverlapByOneLayer(graphExtended, graphExtended);
     }
 
@@ -1335,9 +1335,10 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     auto pointsRepIndicesView = Teuchos::arrayViewFromVector(pointsRepIndices);
     auto pointsOverlappingIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingIndices);
 
-    // Set the repeated and overlapping maps
+    // Set the repeated, unique and overlapping maps
     meshUnstr->mapRepeated_.reset(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsRepIndicesView, indexBase, this->comm_));
+    meshUnstr->mapUnique_ = meshUnstr->mapRepeated_->buildUniqueMap(this->rankRanges_[meshNumber]);
     meshUnstr->mapOverlapping_.reset(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingIndicesView, indexBase, this->comm_));
 
@@ -1357,13 +1358,61 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
             tmpElement.push_back(index);
         }
         FiniteElement fe(tmpElement, elementsMesh->getElement(elementMapOverlapping->getGlobalElement(i)).getFlag());
-        // TODO KHo are surfaces needed here? If so, then add them here.
+        // NOTE KHo Surfaces are not added here for now. Since they probably will not be needed.
         meshUnstr->elementsC_->addElement(fe);
     }
+
     if (myRank == 0) {
-        std::cout << "elementMap ##########################\n";
+        cout << "--- Building overlapping, unique & repeated points ... \n" << flush;
     }
-    meshUnstr->elementMap_->print();
+    // The nodes were deleted in readMesh() so read them again
+    /* meshUnstr->readMeshEntity("node"); */
+    // pointsRep_ contains all points after reading from mesh
+    vec2D_dbl_Type points = *meshUnstr->getPointsRepeated();
+    vec_int_Type flags = *meshUnstr->getBCFlagRepeated();
+    meshUnstr->pointsRep_.reset(new std::vector<std::vector<double>>(meshUnstr->mapRepeated_->getNodeNumElements(),
+                                                                     std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagRep_.reset(new std::vector<int>(meshUnstr->mapRepeated_->getNodeNumElements(), 0));
+
+    int pointIDcont;
+    for (int i = 0; i < pointsRepIndices.size(); i++) {
+        pointIDcont = pointsRepIndices.at(i);
+        for (int j = 0; j < dim; j++)
+            meshUnstr->pointsRep_->at(i).at(j) = points[pointIDcont][j];
+        meshUnstr->bcFlagRep_->at(i) = flags[pointIDcont];
+    }
+
+    // Setting overlapping points and flags
+    meshUnstr->pointsOverlapping_.reset(new std::vector<std::vector<double>>(meshUnstr->mapOverlapping_->getNodeNumElements(),
+                                                                     std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagOverlapping_.reset(new std::vector<int>(meshUnstr->mapOverlapping_->getNodeNumElements(), 0));
+
+    for (int i = 0; i < pointsOverlappingIndices.size(); i++) {
+        pointIDcont = pointsOverlappingIndices.at(i);
+        for (int j = 0; j < dim; j++)
+            meshUnstr->pointsOverlapping_->at(i).at(j) = points[pointIDcont][j];
+        meshUnstr->bcFlagOverlapping_->at(i) = flags[pointIDcont];
+    }
+
+    // Setting unique points and flags
+    meshUnstr->pointsUni_.reset(new std::vector<std::vector<double>>(meshUnstr->mapUnique_->getNodeNumElements(),
+                                                                     std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagUni_.reset(new std::vector<int>(meshUnstr->mapUnique_->getNodeNumElements(), 0));
+    GO indexGlobal;
+    MapConstPtr_Type map = meshUnstr->getMapRepeated();
+    vec2D_dbl_ptr_Type pointsRep = meshUnstr->pointsRep_;
+    for (int i = 0; i < meshUnstr->mapUnique_->getNodeNumElements(); i++) {
+        indexGlobal = meshUnstr->mapUnique_->getGlobalElement(i);
+        for (int j = 0; j < dim; j++) {
+            meshUnstr->pointsUni_->at(i).at(j) = pointsRep->at(map->getLocalElement(indexGlobal)).at(j);
+        }
+        meshUnstr->bcFlagUni_->at(i) = meshUnstr->bcFlagRep_->at(map->getLocalElement(indexGlobal));
+    }
+
+    /* if (myRank == 0) { */
+    /*     std::cout << "elementMap ##########################\n"; */
+    /* } */
+    /* meshUnstr->elementMap_->print(); */
     /* meshUnstr->mapRepeated_->print(); */
     /* if (myRank == 0) { */
     /*     std::cout << "elementMapOverlapping ##########################\n"; */

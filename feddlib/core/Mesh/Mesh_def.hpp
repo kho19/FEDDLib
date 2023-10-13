@@ -3,6 +3,7 @@
 
 #include "Mesh_decl.hpp"
 #include "feddlib/core/FE/Elements.hpp"
+#include "feddlib/core/FEDDCore.hpp"
 
 /*!
 Definition of Mesh
@@ -19,61 +20,20 @@ using Teuchos::outArg;
 using namespace std;
 namespace FEDD {
 template <class SC, class LO, class GO, class NO>
-Mesh<SC,LO,GO,NO>::Mesh():
-numElementsGlob_(0),
-mapUnique_(),
-mapRepeated_(),
-pointsRep_(),
-pointsUni_(),
-bcFlagRep_(),
-bcFlagUni_(),
-surfaceElements_(),
-elementMap_(),
-comm_(),
-pointsRepRef_(),
-pointsUniRef_(),
-mapUniqueP2Map_(),
-mapRepeatedP2Map_(),
-AABBTree_()
-{
-
-    surfaceElements_.reset(new Elements());
-    
-    elementsC_.reset(new Elements());    
-
-    FEType_ = "P1"; // We generally assume the mesh to be p1. In case of P1 or Q2 the FEType is allways adjusted
-}
+Mesh<SC, LO, GO, NO>::Mesh()
+    : numElementsGlob_(0), mapUnique_(), mapRepeated_(), pointsRep_(), pointsUni_(), bcFlagRep_(), bcFlagUni_(),
+      surfaceElements_(new Elements()), elementsC_(new Elements()), elementMap_(new Map()), comm_(), pointsRepRef_(),
+      pointsUniRef_(), mapUniqueP2Map_(), mapRepeatedP2Map_(), AABBTree_(), dualGraph_(), elementMapOverlapping_(),
+      mapOverlapping_(), pointsOverlapping_(), bcFlagOverlapping_() {}
 
 template <class SC, class LO, class GO, class NO>
-Mesh<SC,LO,GO,NO>::Mesh(CommConstPtrConst_Type& comm):
-numElementsGlob_(0),
-mapUnique_(),
-mapRepeated_(),
-pointsRep_(),
-pointsUni_(),
-bcFlagRep_(),
-bcFlagUni_(),
-surfaceElements_(),
-elementMap_(),
-edgeMap_(),
-comm_(comm),
-pointsRepRef_(),
-pointsUniRef_(),
-mapUniqueP2Map_(),
-mapRepeatedP2Map_(),
-AABBTree_()
-{
-    AABBTree_.reset(new AABBTree_Type());
-    surfaceElements_.reset(new Elements());
+Mesh<SC, LO, GO, NO>::Mesh(CommConstPtrConst_Type &comm)
+    : numElementsGlob_(0), mapUnique_(), mapRepeated_(), pointsRep_(), pointsUni_(), bcFlagRep_(), bcFlagUni_(),
+      surfaceElements_(new Elements()), elementsC_(new Elements()), elementMap_(new Map()), edgeMap_(), comm_(comm),
+      pointsRepRef_(), pointsUniRef_(), mapUniqueP2Map_(), mapRepeatedP2Map_(), AABBTree_(new AABBTree_Type()),
+      dualGraph_(), elementMapOverlapping_(), mapOverlapping_(), pointsOverlapping_(), bcFlagOverlapping_() {}
 
-    elementsC_.reset(new Elements());
-
-    FEType_ = "P1";
-}
-
-template <class SC, class LO, class GO, class NO> Mesh<SC, LO, GO, NO>::~Mesh() {
-
-}
+template <class SC, class LO, class GO, class NO> Mesh<SC, LO, GO, NO>::~Mesh() {}
 
 template <class SC, class LO, class GO, class NO> void Mesh<SC, LO, GO, NO>::setElementFlags(std::string type) {
 
@@ -150,7 +110,7 @@ typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapRepe
 }
 
 template <class SC, class LO, class GO, class NO>
-typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMap() {
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMap() const {
     TEUCHOS_TEST_FOR_EXCEPTION(elementMap_.is_null(), std::runtime_error, "Element map of mesh does not exist.");
     return elementMap_;
 }
@@ -573,15 +533,38 @@ void Mesh<SC,LO,GO,NO>::flipSurface(FiniteElement_Type feSub){
 }
 // ################# Nonlinear Schwarz related functions ##################
 template <class SC, class LO, class GO, class NO>
-typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMapOverlapping() {
-    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error, "Overlapping element map of mesh does not exist.");
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMapOverlapping() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error,
+                               "Overlapping element map of mesh does not exist.");
     return elementMapOverlapping_;
 }
 
 template <class SC, class LO, class GO, class NO>
-typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() {
-    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error, "Overlapping element map of mesh does not exist.");
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error,
+                               "Overlapping element map of mesh does not exist.");
     return mapOverlapping_;
+}
+
+// Replace all unique and repeated members in these functions as required by the application.
+template <class SC, class LO, class GO, class NO>
+void Mesh<SC, LO, GO, NO>::replaceRepeatedMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const {
+    // Ensure that all members being replaced have the same number of local elements
+    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(),
+                               std::runtime_error,
+                               "New memembers must have the same number of local elements");
+    this->mapRepeated_ = newMap;
+    this->pointsRep_ = newPoints;
+}
+
+template <class SC, class LO, class GO, class NO>
+void Mesh<SC, LO, GO, NO>::replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const {
+    // Ensure that all members being replaced have the same number of local elements
+    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(),
+                               std::runtime_error,
+                               "New memembers must have the same number of local elements");
+    this->mapUnique_ = newMap;
+    this->pointsUni_ = newPoints;
 }
 
 

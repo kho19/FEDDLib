@@ -2,7 +2,7 @@
     <ParameterList name="Parameter">
         <Parameter name="Dimension"							    type="int"   	value="2"/>
         <Parameter name="Discretization"                        type="string"   value="P1"/><!--P1, P2-->
-        <Parameter name="Mesh Type" type="string" value="structured"/> <!--structured, unstructured -->
+        <Parameter name="Mesh Type" type="string" value="unstructured"/> <!--structured, unstructured -->
         <Parameter name="Mesh Name" type="string" value="simple_square.mesh"/><!--Turek3DCylinder_1400.mesh, circle2D.mesh-->
 	    <Parameter name="Source Type" type="string"   value="surface"/>
         <Parameter name="Mesh Delimiter"					    type="string"   value=" "/>

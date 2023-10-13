@@ -2,7 +2,7 @@
 
 #ifdef HAVE_EXPLICIT_INSTANTIATION
 #include "NonLinearSchwarzOperator_def.hpp"
-namespace FEDD {
+namespace FROSch {
 template class NonLinearSchwarzOperator<default_sc, default_lo, default_go, default_no>;
 }
 #endif // HAVE_EXPLICIT_INSTANTIATION

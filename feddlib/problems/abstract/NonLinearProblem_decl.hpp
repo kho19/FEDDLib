@@ -115,6 +115,12 @@ public:
                                const ::Thyra::ModelEvaluatorBase::OutArgs<SC> &outArgs) const = 0;
 
     virtual ::Thyra::ModelEvaluatorBase::OutArgs<SC> createOutArgsImpl() const;
+
+    // ################ Nonlinear Schwarz related functions ################
+    // Can be implemented by specific nonlinear problems so that nonlinear Schwarz solver can be used
+    // Reinitializes the vectors used to store intermediate results using the provided map
+    // Uggly that this needs to be added here like this
+    virtual void reInitSpecificProblemVectors(const MapConstPtr_Type newMap){};
     
     double nonLinearTolerance_;
     BlockMultiVectorPtr_Type    previousSolution_;

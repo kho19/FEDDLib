@@ -19,7 +19,7 @@ NonLinLaplace<SC, LO, GO, NO>::NonLinLaplace(const DomainConstPtr_Type &domain, 
     this->initNOXParameters();
     this->addVariable(domain, FEType, "u", 1);
     this->dim_ = this->getDomain(0)->getDimension();
-    u_rep_ = Teuchos::rcp(new MultiVector_Type(this->getDomain(0)->getMapRepeated()));
+    this->u_rep_ = Teuchos::rcp(new MultiVector_Type(this->getDomain(0)->getMapRepeated()));
 }
 
 template <class SC, class LO, class GO, class NO> NonLinLaplace<SC, LO, GO, NO>::~NonLinLaplace() {}
@@ -65,9 +65,6 @@ template <class SC, class LO, class GO, class NO> void NonLinLaplace<SC, LO, GO,
     this->feFactory_->assemblyNonlinearLaplace(this->dim_, this->getDomain(0)->getFEType(), 2, this->u_rep_,
                                                this->system_, this->residualVec_, this->parameterList_, "Jacobian");
 
-    // Initialise solution to 1 everywhere
-    this->solution_->putScalar(1.);
-
     if (this->verbose_) {
         std::cout << "done -- " << std::endl;
     }
@@ -85,8 +82,8 @@ void NonLinLaplace<SC, LO, GO, NO>::reAssemble(std::string type) const {
                   << " (" << type << ") ... " << std::flush;
     // Update the locally stored solution to the problem
     MultiVectorConstPtr_Type u = this->solution_->getBlock(0);
+    // solution_ is stored on the unique map, assembly requires the solution on the repeated map.
     this->u_rep_->importFromVector(u, true);
-
     if (type == "Rhs") {
 
         this->feFactory_->assemblyNonlinearLaplace(this->dim_, this->getDomain(0)->getFEType(), 2, this->u_rep_,
@@ -250,8 +247,7 @@ template <class SC, class LO, class GO, class NO>
 void NonLinLaplace<SC, LO, GO, NO>::calculateNonLinResidualVec(std::string type, double time) const {
 
     this->reAssemble("Rhs");
-    // TODO understand how the boundary conditions are handled
-    //  Seems that they are included in the solution vector and corrected for
+    //  Seems that boundary conditions are included in the solution vector and corrected for
     //  here Why is this a good approach?
 
     // rhs_ contains the dirichlet boundary conditions
@@ -262,12 +258,12 @@ void NonLinLaplace<SC, LO, GO, NO>::calculateNonLinResidualVec(std::string type,
         this->bcFactory_->setVectorMinusBC(this->residualVec_, this->solution_, time);
     } else if (!type.compare("reverse")) {
         // this = -1*this + 1*rhs
-        /* std::cout << "Solution !!!!!!!!!!!!!!!!!!!!!!\n"; */
+        /* std::cout << "Solution in NonLinLaplace!!!!!!!!!!!!!!!!!!!!!!\n"; */
         /* this->solution_->getBlock(0)->print(); */
 
         this->residualVec_->update(1., *this->rhs_, -1.);
-        /* std::cout << "Solution in NonLinLaplace!!!!!!!!!!!!!!!!!!!!!!\n"; */
-        /* this->solution_->getBlock(0)->print(); */
+        /* std::cout << "Before !!!!!!!!!!!!!!!!!!!!!!\n"; */
+        /* this->residualVec_->getBlock(0)->print(); */
 
         // Sets the residualVec_ at the boundary = boundary condition - solution
         // Necessary since reAssemble("Rhs") only assembles the residual on
@@ -279,5 +275,12 @@ void NonLinLaplace<SC, LO, GO, NO>::calculateNonLinResidualVec(std::string type,
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "Unknown type for residual computation.");
     }
 }
+
+
+template <class SC, class LO, class GO, class NO>
+void NonLinLaplace<SC, LO, GO, NO>::reInitSpecificProblemVectors(const MapConstPtr_Type newMap){
+    this->u_rep_ = Teuchos::rcp(new MultiVector_Type(newMap));
+}
+
 } // namespace FEDD
 #endif

@@ -2,7 +2,13 @@
 #define NONLINEARSCHWARZOPERATOR_DECL_HPP
 
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
+#include "feddlib/core/Mesh/Mesh_decl.hpp"
+#include "feddlib/problems/abstract/NonLinearProblem_decl.hpp"
 #include <FROSch_SchwarzOperator_def.hpp>
+#include <Teuchos_Describable.hpp>
+#include <Teuchos_FancyOStream.hpp>
+#include <Teuchos_RCPDecl.hpp>
+#include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
 
 /*!
@@ -74,27 +80,50 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     using ConstSCVecView = typename SchwarzOperator<SC, LO, GO, NO>::ConstSCVecView;
 
+    using MeshPtr = typename Teuchos::RCP<FEDD::Mesh<SC, LO, GO, NO>>;
+
+    using NonLinearProblemPtr = typename Teuchos::RCP<FEDD::NonLinearProblem<SC, LO, GO, NO>>;
+
   public:
-    NonLinearSchwarzOperator(ConstXMatrixPtr k, ParameterListPtr parameterList);
+    NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList,
+                             NonLinearProblemPtr problem);
 
     ~NonLinearSchwarzOperator();
 
-    int initialize() { initialize(0); };
+    int initialize() {
+        initialize(0);
+        return 0;
+    };
     int initialize(int overlap);
 
     int compute();
 
+    void apply(const XMultiVector &x, XMultiVector &y, SC alpha = ScalarTraits<SC>::one(),
+               SC beta = ScalarTraits<SC>::zero());
+
+    // This apply method must be overridden but does not make sense in the context of nonlinear operators
     void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
                SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const;
 
-    // TODO might need this
+    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const;
+
+    string description() const;
+
+    // TODO KHo might need this
     int buildElementNodeList();
 
   private:
     void assemble(XMatrixPtr localJacobian, XMultiVectorPtr localRHS);
 
+    // FEDDLib problem object. (will need to be changed for interoperability)
+    NonLinearProblemPtr problem_;
+    // Dual graph of the mesh to operate on
+    GraphPtr dualGraph_;
+    // Jacobian and rhs for local Newtons method
+    XMatrixPtr localJacobian_;
+    XMultiVectorPtr localRHS_;
     // Current point of evaluation. Null if none has been passed
-    mutable XMultiVectorPtr x_;
+    XMultiVectorPtr x_;
     // Current output. Null if no valid output stored.
     mutable XMultiVectorPtr fX_;
     // Temp Vectors for apply()
@@ -104,7 +133,13 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     // Newtons method params
     double newtonTol_;
     int maxNumIts_;
-    GraphPtr elementNodeList_;
+
+    // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
+    ConstXMapPtr mapRepeatedMPI_;
+    ConstXMapPtr mapUniqueMPI_;
+    ConstXMapPtr elementMapMPI_;
+    ConstXMapPtr elementMapOverlappingMPI_;
+    ConstXMapPtr mapOverlappingMPI_;
 };
 
 } // namespace FROSch

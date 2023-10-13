@@ -1050,16 +1050,20 @@ void Domain<SC, LO, GO, NO>::exportElementFlags(string name)
     
 // ################# Nonlinear Schwarz functions #################
 template <class SC, class LO, class GO, class NO>
-typename Domain<SC,LO,GO,NO>::MapConstPtr_Type Domain<SC,LO,GO,NO>::getElementMapOverlapping() const{
+typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getElementMapOverlapping() const {
 
     return mesh_->getElementMapOverlapping();
 }
 
 template <class SC, class LO, class GO, class NO>
-typename Domain<SC,LO,GO,NO>::MapConstPtr_Type Domain<SC,LO,GO,NO>::getMapOverlapping() const{
+typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getMapOverlapping() const {
 
     return mesh_->getMapOverlapping();
 }
 
+template <class SC, class LO, class GO, class NO>
+typename Domain<SC, LO, GO, NO>::GraphPtr_Type Domain<SC, LO, GO, NO>::getDualGraph() const {
+    return mesh_->getDualGraph();
 }
+} // namespace FEDD
 #endif
