@@ -37,8 +37,8 @@ template <class SC, class LO, class GO, class NO>
 NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList,
                                                                    NonLinearProblemPtr problem)
     : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_(problem), dualGraph_(), localJacobian_(), localRHS_(), fX_(),
-      xTmp_(), yTmp_(), newtonTol_(), maxNumIts_(), mapRepeatedMPI_(), mapUniqueMPI_(), elementMapMPI_(),
-      elementMapOverlappingMPI_(), mapOverlappingMPI_() {
+      xTmp_(), yTmp_(), newtonTol_(), maxNumIts_(), mapRepeatedMpiTmp_(), mapUniqueMpiTmp_(), elementMapMpiTmp_(),
+      elementMapOverlappingMpiTmp_(), mapOverlappingMpiTmp_(), pointsRepTmp_(), pointsUniTmp_() {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = this->problem_->getDomainVector();
@@ -64,46 +64,44 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::~NonLinearSchwarzOperator() {}
 template <class SC, class LO, class GO, class NO>
 int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
 
-    // Need to replace the following:
-    // - comm_ to SerialComm_ in problem, domainVec, Mesh ==> DONE
-    // - u_rep_ to u_overlapping_ in problemSpecific ==> DONE
-    // - mapRepeated_ and mapUnique_ to mapOverlappingLocal ==> DONE
-    // - pointsRep to pointsOverlapping ==> DONE
-
     auto domainVec = this->problem_->getDomainVector();
     auto mesh = domainVec.at(0)->getMesh();
 
-    // Store all distributed properties that need replacing for local computations
-    this->mapRepeatedMPI_ = mesh->getMapRepeated()->getXpetraMap();
-    this->mapUniqueMPI_ = mesh->getMapUnique()->getXpetraMap();
-    /* this->elementMapMPI_ = mesh->getElementMap()->getXpetraMap(); */
-    this->elementMapOverlappingMPI_ = mesh->getElementMapOverlapping()->getXpetraMap();
-    this->mapOverlappingMPI_ = mesh->getMapOverlapping()->getXpetraMap();
+    // Build serial overlapping element and node maps
+    auto elementMapOverlappingMPI = mesh->getElementMapOverlapping()->getXpetraMap();
+    auto mapOverlappingMPI = mesh->getMapOverlapping()->getXpetraMap();
+    auto elementMapOverlappingLocal = Xpetra::MapFactory<LO, GO, NO>::Build(
+        elementMapOverlappingMPI->lib(), elementMapOverlappingMPI->getLocalNumElements(), 0, this->SerialComm_);
+    auto mapOverlappingLocal = Xpetra::MapFactory<LO, GO, NO>::Build(
+        mapOverlappingMPI->lib(), mapOverlappingMPI->getLocalNumElements(), 0, this->SerialComm_);
 
-    // Replace communicators
+    // Store all distributed properties that need replacing for local computations
+    this->mapRepeatedMpiTmp_ = mesh->getMapRepeated()->getXpetraMap();
+    this->mapUniqueMpiTmp_ = mesh->getMapUnique()->getXpetraMap();
+    this->pointsRepTmp_ = mesh->getPointsRepeated();
+    this->pointsUniTmp_ = mesh->getPointsUnique();
+
+    // Replace the following shared objects within this->problem_ to "trick" FEDD::Problem assembly routines to assemble
+    // locally on the overlapping subdomain
+    //   1. comm_ to SerialComm_ in problem, domainVec, Mesh
+    //   2. mapRepeated_ and mapUnique_ to mapOverlappingLocal
+    //   3. pointsRep to pointsOverlapping
+    //   4. u_rep_ to u_overlapping_ in problemSpecific
+    // No destinction between unique and repeated needs to be made since assembly is only local here.
+
+    // 1. replace communicators
     this->problem_->comm_ = this->SerialComm_;
     domainVec.at(0)->setComm(this->SerialComm_);
     mesh->comm_ = this->SerialComm_;
 
-    // Build serial overlapping element and node maps
-    // todo KHo Are repeated and unique maps needed?
-    auto elementMapOverlappingLocal = Xpetra::MapFactory<LO, GO, NO>::Build(
-        this->elementMapOverlappingMPI_->lib(), this->elementMapOverlappingMPI_->getLocalNumElements(), 0,
-        this->SerialComm_);
-    auto mapOverlappingLocal = Xpetra::MapFactory<LO, GO, NO>::Build(
-        this->mapOverlappingMPI_->lib(), this->mapOverlappingMPI_->getLocalNumElements(), 0, this->SerialComm_);
-
-    // Replace repeated and unique members to "trick" FEDD::Problem assembly routines to assemble locally on the
-    // overlapping subdomain. No destinction between unique and repeated needs to be made since assembly is only local
-    // here.
+    // 2. and 3. replace repeated and unique members
     mesh->replaceRepeatedMembers(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)),
                                  mesh->pointsOverlapping_);
     mesh->replaceUniqueMembers(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)), mesh->pointsOverlapping_);
-
     // Problems block vectors and matrices need to be reinitialized
     this->problem_->initializeProblem();
 
-    // rebuild problem->u_rep_ to use overlapping map
+    // 4. rebuild problem->u_rep_ to use overlapping map
     this->problem_->reInitSpecificProblemVectors(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)));
     /* this->localJacobian_ = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(); */
     /* this->localRHS_ = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(); */
@@ -114,20 +112,64 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
 template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<SC, LO, GO, NO>::compute() {
 
     TEUCHOS_TEST_FOR_EXCEPTION(this->x_.is_null(), std::runtime_error,
-                               "The the current value of the nonlinear operator requires an input to be computed.");
+                               "The the current value of the nonlinear operator requires "
+                               "an input to be computed.");
 
-    int numIters = 0;
-    this->problem_->calculateNonLinResidualVec("reverse", 0.);
-    auto residual = this->problem_->calculateResidualNorm();
-    std::cout << "==> Current residual is " << residual << std::endl;
-    // TODO KHo initialize the solution. Should this be distributed the same as the Jacobian and RHS only not locally?
-    // Or actually locally while computing and then replaceMap to the distributed communicator?
-    // TODO maybe I can use the nonlinear solver built into the FEDDLib here?
-    /* while (residual > this->newtonTol_ && numIters < this->maxNumIts_) { */
-    /*     numIters++; */
-    /**/
-    /*     // TODO KHo iterate over all local elements (via dual graph) to assemble local rhs and Jacobian. */
-    /* } */
+    bool verbose = this->problem_->getVerbose();
+    double	gmresIts = 0.;
+    double residual0 = 1.;
+    double residual = 1.;
+    double tol = this->problem_->getParameterList()->sublist("Parameter").get("relNonLinTol",1.0e-6);
+    int nlIts=0;
+    int maxNonLinIts = this->problem_->getParameterList()->sublist("Parameter").get("MaxNonLinIts",10);
+    double criterionValue = 1.;
+    std::string criterion = this->problem_->getParameterList()->sublist("Parameter").get("Criterion","Residual");
+
+    while ( nlIts < maxNonLinIts ) {
+        //this makes only sense for Navier-Stokes/Stokes, for other problems, e.g., non linear elasticity, it should do nothing.
+
+        this->problem_->calculateNonLinResidualVec("reverse");
+
+        if (criterion=="Residual")
+            residual = this->problem_->calculateResidualNorm();
+
+        this->problem_->assemble("Newton");
+
+        this->problem_->setBoundariesSystem();
+
+        if (nlIts==0)
+            residual0 = residual;
+        
+        if (criterion=="Residual"){
+            criterionValue = residual/residual0;
+            if (verbose)
+                cout << "### Newton iteration : " << nlIts << "  relative nonlinear residual : " << criterionValue << endl;
+            if ( criterionValue < tol )
+                break;
+        }
+
+        gmresIts += this->problem_->solveAndUpdate( criterion, criterionValue );
+        nlIts++;
+        if(criterion=="Update"){
+            if (verbose)
+                cout << "### Newton iteration : " << nlIts << "  residual of update : " << criterionValue << endl;
+            if ( criterionValue < tol )
+                break;
+        }
+
+        // ####### end FPI #######
+    }
+
+    gmresIts/=nlIts;
+    if (verbose)
+        cout << "### Total Newton iterations : " << nlIts << "  with average gmres its : " << gmresIts << endl;
+    if ( this->problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts",false) ) {
+        TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNonLinIts ,std::runtime_error,"Maximum nonlinear Iterations reached. Problem might have converged in the last step. Still we cancel here.");
+    }
+
+    std::cout << "==> Current residual: " << residual << std::endl;
+
+    // TODO KHo reset u_rep_ to repeated map
     return 0;
 }
 

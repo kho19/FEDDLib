@@ -1,6 +1,7 @@
 #ifndef NONLINEARSCHWARZOPERATOR_DECL_HPP
 #define NONLINEARSCHWARZOPERATOR_DECL_HPP
 
+#include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/Mesh/Mesh_decl.hpp"
 #include "feddlib/problems/abstract/NonLinearProblem_decl.hpp"
@@ -135,11 +136,15 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     int maxNumIts_;
 
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
-    ConstXMapPtr mapRepeatedMPI_;
-    ConstXMapPtr mapUniqueMPI_;
-    ConstXMapPtr elementMapMPI_;
-    ConstXMapPtr elementMapOverlappingMPI_;
-    ConstXMapPtr mapOverlappingMPI_;
+    ConstXMapPtr mapRepeatedMpiTmp_;
+    ConstXMapPtr mapUniqueMpiTmp_;
+    ConstXMapPtr elementMapMpiTmp_;
+    ConstXMapPtr elementMapOverlappingMpiTmp_;
+    ConstXMapPtr mapOverlappingMpiTmp_;
+
+    // Vectors for saving repeated and unique points
+    FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
+    FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
 };
 
 } // namespace FROSch

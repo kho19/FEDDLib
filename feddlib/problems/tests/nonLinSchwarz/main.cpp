@@ -163,9 +163,7 @@ int main(int argc, char *argv[]) {
     // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
     // between the subdomains
     nonLinLaplace->initializeProblem();
-    // Set initial guess
-    // If solving p-Laplace an initial guess with nonzero gradient must be provided. Use fromThyraMultiVector in this
-    // case.
+    // Set initial guess. This has no effect here since vectors are reinitiliazed on serial comm.
     /* nonLinLaplace->solution_->putScalar(1.); */
 
     // ########################
