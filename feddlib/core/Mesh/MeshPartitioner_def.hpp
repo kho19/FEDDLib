@@ -1235,7 +1235,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
 
     // Export operation complete so we can overwrite the old element mapRepeated
     meshUnstr->elementMap_.reset(
-        new Map(underlyingLib, OTGO::invalid(), elementsGlobalMapping, indexBase, this->comm_));
+        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), elementsGlobalMapping, indexBase, this->comm_));
 
     /* if (myRank == 0) { */
     /*     cout << "Before extending #############################\n"; */

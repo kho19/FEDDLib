@@ -102,8 +102,6 @@ int main(int argc, char *argv[]) {
 
     int dim = parameterListProblem->sublist("Parameter").get("Dimension", 2);
     string meshType = parameterListProblem->sublist("Parameter").get("Mesh Type", "unstructured");
-    string meshName = parameterListProblem->sublist("Parameter").get("Mesh Name", "simple_square.mesh");
-    string meshDelimiter = parameterListProblem->sublist("Parameter").get("Mesh Delimiter", " ");
     // m = dimension of square on each processor in num elements
     int m = parameterListProblem->sublist("Parameter").get("H/h", 5);
     string FEType = parameterListProblem->sublist("Parameter").get("Discretization", "P1");
@@ -150,6 +148,7 @@ int main(int argc, char *argv[]) {
     bcFactory->addBC(zeroDirichlet, 1, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 4, 0, domain, "Dirichlet", 1);
 
     auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
 

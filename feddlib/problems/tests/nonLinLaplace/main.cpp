@@ -95,7 +95,6 @@ int main(int argc, char *argv[]) {
 
     int dim = parameterListProblem->sublist("Parameter").get("Dimension", 2);
     string meshType = parameterListProblem->sublist("Parameter").get("Mesh Type", "structured");
-    string meshName = parameterListProblem->sublist("Parameter").get("Mesh Name", "");
     string meshDelimiter = parameterListProblem->sublist("Parameter").get("Mesh Delimiter", " ");
     int m = parameterListProblem->sublist("Parameter").get("H/h", 5);
     string FEType = parameterListProblem->sublist("Parameter").get("Discretization", "P1");
@@ -185,6 +184,7 @@ int main(int argc, char *argv[]) {
     bcFactory->addBC(zeroDirichlet, 1, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 4, 0, domain, "Dirichlet", 1);
 
     NonLinLaplace<SC, LO, GO, NO> NonLinLaplace(domain, FEType, parameterListAll);
 
@@ -211,6 +211,10 @@ int main(int argc, char *argv[]) {
     std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "NOX");
     NonLinearSolver<SC, LO, GO, NO> nlSolverAssFE(nlSolverType);
     nlSolverAssFE.solve(NonLinLaplace);
+    /* if (comm->getRank() == 0) { */
+    /*     waitForGdbAttach<LO>(); */
+    /* } */
+
     comm->barrier();
 
     // ########################
