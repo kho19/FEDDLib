@@ -8,6 +8,7 @@
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_TestForException.hpp>
@@ -81,7 +82,14 @@ int main(int argc, char *argv[]) {
     // Set default values for command line parameters
     // ########################
 
+    const bool debug = true;
+    if (comm->getRank() == 0 && debug) {
+        waitForGdbAttach<LO>();
+    }
+    comm->barrier();
+
     bool verbose(comm->getRank() == 0);
+
     if (verbose) {
         cout << "###############################################################" << endl;
         cout << "########## Starting nonlinear graph partitioning ... ##########" << endl;
@@ -132,7 +140,7 @@ int main(int argc, char *argv[]) {
 
         partitionerP1.readMesh();
         partitionerP1.buildDualGraph(0);
-        partitionerP1.partitionDualGraphWithOverlap(0, 1);
+        partitionerP1.partitionDualGraphWithOverlap(0, 0);
         partitionerP1.buildSubdomainFEsAndNodeLists(0);
 
         domain = domainP1;
@@ -168,10 +176,31 @@ int main(int argc, char *argv[]) {
     // ########################
     // Solve the problem using nonlinear Schwarz
     // ########################
-    /* if (comm->getRank() == 0) { */
-        /* waitForGdbAttach<LO>(); */
-    /* } */
+
     solve(nonLinLaplace);
+
+    comm->barrier();
+
+    // Export Solution
+    bool boolExportSolution = true;
+    if (boolExportSolution) {
+        Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exPara(new ExporterParaView<SC, LO, GO, NO>());
+
+        Teuchos::RCP<const MultiVector<SC, LO, GO, NO>> exportSolution = nonLinLaplace->getSolution()->getBlock(0);
+
+        logGreen("Solution map for paraview", comm);
+        exportSolution->getMap()->print();
+        logGreen("Solution data", comm);
+        exportSolution->print();
+    
+        std::cout << "Line 1\n";
+        exPara->setup("solutionNonLinSchwarz", domain->getMesh(), FEType);
+        std::cout << "Line 2\n";
+        comm->barrier();
+        exPara->addVariable(exportSolution, "u", "Scalar", 1, domain->getMapUnique(), domain->getMapUniqueP2());
+        std::cout << "Line 3\n";
+        exPara->save(0.0);
+    }
 
     return (EXIT_SUCCESS);
 }
@@ -192,14 +221,15 @@ void solve(NonLinearProblemPtr_Type problem) {
     NonLinearSchwarzOp->initialize();
 
     NonLinearSchwarzOp->apply(*initialU->getXpetraMultiVectorNonConst(), *tempOut->getXpetraMultiVectorNonConst());
+
     // Define convergence requirements
-    double gmresIts = 0.;
-    double residual0 = 1.;
-    double residual = 1.;
-    double outerTol = problem->getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6);
-    int outerNonLinIts = 0;
-    int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
-    double relativeResidual = residual / residual0;
+    /* double gmresIts = 0.; */
+    /* double residual0 = 1.; */
+    /* double residual = 1.; */
+    /* double outerTol = problem->getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6); */
+    /* int outerNonLinIts = 0; */
+    /* int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10); */
+    /* double relativeResidual = residual / residual0; */
 
     // Outer Newton iterations
     /* while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) { */

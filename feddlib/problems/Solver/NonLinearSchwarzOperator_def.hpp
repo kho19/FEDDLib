@@ -4,6 +4,7 @@
 #include "NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <Tacho_Driver.hpp>
 #include <Teuchos_BLAS_types.hpp>
 #include <Teuchos_ParameterList.hpp>
@@ -75,9 +76,6 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     this->pointsRepTmp_ = mesh->getPointsRepeated();
     this->pointsUniTmp_ = mesh->getPointsUnique();
 
-    /* this->localJacobian_ = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(); */
-    /* this->localRHS_ = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(); */
-
     return 0;
 }
 
@@ -120,69 +118,69 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     // Solve local nonlinear problems
     // TODO KHo need to set the initial value here to reflect the current linearisation point
     // TODO KHo change this to be a nox solver? Don't want FEDDLib nonlinear solver to remove depedency on the FEDDLib.
-    bool verbose = this->problem_->getVerbose();
-    double gmresIts = 0.;
-    double residual0 = 1.;
-    double residual = 1.;
-    int nlIts = 0;
-    double criterionValue = 1.;
-    auto tol = this->problem_->getParameterList()
-                   ->sublist("Nonlinear Schwarz Solver")
-                   .sublist("Inner Newton")
-                   .get("relNonLinTol", 1.0e-6);
-    auto maxNonLinIts = this->problem_->getParameterList()
-                            ->sublist("Nonlinear Schwarz Solver")
-                            .sublist("Inner Newton")
-                            .get("MaxNonLinIts", 10);
-    auto criterion = this->problem_->getParameterList()
-                         ->sublist("Nonlinear Schwarz Solver")
-                         .sublist("Inner Newton")
-                         .get("Criterion", "Residual");
-
-    while (nlIts < maxNonLinIts) {
-
-        this->problem_->calculateNonLinResidualVec("reverse");
-
-        if (criterion == "Residual")
-            residual = this->problem_->calculateResidualNorm();
-
-        this->problem_->assemble("Newton");
-
-        this->problem_->setBoundariesSystem();
-
-        if (nlIts == 0)
-            residual0 = residual;
-
-        if (criterion == "Residual") {
-            criterionValue = residual / residual0;
-            if (verbose)
-                cout << "### Newton iteration : " << nlIts << "  relative nonlinear residual : " << criterionValue
-                     << endl;
-            if (criterionValue < tol)
-                break;
-        }
-
-        gmresIts += this->problem_->solveAndUpdate(criterion, criterionValue);
-        nlIts++;
-        if (criterion == "Update") {
-            if (verbose)
-                cout << "### Newton iteration : " << nlIts << "  residual of update : " << criterionValue << endl;
-            if (criterionValue < tol)
-                break;
-        }
-    }
-
-    gmresIts /= nlIts;
-    if (verbose)
-        cout << "### Total Newton iterations : " << nlIts << "  with average gmres its : " << gmresIts << endl;
-    if (this->problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
-        TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNonLinIts, std::runtime_error,
-                                   "Maximum nonlinear Iterations reached. Problem might have converged in the last "
-                                   "step. Still we cancel here.");
-    }
+    /* bool verbose = this->problem_->getVerbose(); */
+    /* double gmresIts = 0.; */
+    /* double residual0 = 1.; */
+    /* double residual = 1.; */
+    /* int nlIts = 0; */
+    /* double criterionValue = 1.; */
+    /* auto tol = this->problem_->getParameterList() */
+    /*                ->sublist("Nonlinear Schwarz Solver") */
+    /*                .sublist("Inner Newton") */
+    /*                .get("relNonLinTol", 1.0e-6); */
+    /* auto maxNonLinIts = this->problem_->getParameterList() */
+    /*                         ->sublist("Nonlinear Schwarz Solver") */
+    /*                         .sublist("Inner Newton") */
+    /*                         .get("MaxNonLinIts", 10); */
+    /* auto criterion = this->problem_->getParameterList() */
+    /*                      ->sublist("Nonlinear Schwarz Solver") */
+    /*                      .sublist("Inner Newton") */
+    /*                      .get("Criterion", "Residual"); */
+    /**/
+    /* while (nlIts < maxNonLinIts) { */
+    /**/
+    /*     this->problem_->calculateNonLinResidualVec("reverse"); */
+    /**/
+    /*     if (criterion == "Residual") */
+    /*         residual = this->problem_->calculateResidualNorm(); */
+    /**/
+    /*     this->problem_->assemble("Newton"); */
+    /**/
+    /*     this->problem_->setBoundariesSystem(); */
+    /**/
+    /*     if (nlIts == 0) */
+    /*         residual0 = residual; */
+    /**/
+    /*     if (criterion == "Residual") { */
+    /*         criterionValue = residual / residual0; */
+    /*         if (verbose) */
+    /*             cout << "### Newton iteration : " << nlIts << "  relative nonlinear residual : " << criterionValue */
+    /*                  << endl; */
+    /*         if (criterionValue < tol) */
+    /*             break; */
+    /*     } */
+    /**/
+    /*     gmresIts += this->problem_->solveAndUpdate(criterion, criterionValue); */
+    /*     nlIts++; */
+    /*     if (criterion == "Update") { */
+    /*         if (verbose) */
+    /*             cout << "### Newton iteration : " << nlIts << "  residual of update : " << criterionValue << endl; */
+    /*         if (criterionValue < tol) */
+    /*             break; */
+    /*     } */
+    /* } */
+    /**/
+    /* gmresIts /= nlIts; */
+    /* if (verbose) */
+    /*     cout << "### Total Newton iterations : " << nlIts << "  with average gmres its : " << gmresIts << endl; */
+    /* if (this->problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) { */
+    /*     TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNonLinIts, std::runtime_error, */
+    /*                                "Maximum nonlinear Iterations reached. Problem might have converged in the last " */
+    /*                                "step. Still we cancel here."); */
+    /* } */
 
     this->MpiComm_->barrier();
-    std::cout << "==> Current residual: " << residual << std::endl;
+    /* std::cout << "==> Current residual: " << residual << std::endl; */
 
     // ================= Restore shared objects ===============================
     //    1. comm_ to MpiComm_ in problem, domainVec, Mesh
@@ -203,6 +201,8 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     // Problems block vectors and matrices need to be reinitialized
     // TODO save current solution since initializeProblem overwrites it, then export to distributed solution vector.
     this->problem_->initializeProblem();
+    this->problem_->solution_->putScalar(3.3);
+
 
     // 4. rebuild problem->u_rep_ to use overlapping map
     this->problem_->reInitSpecificProblemVectors(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(this->mapRepeatedMpiTmp_)));

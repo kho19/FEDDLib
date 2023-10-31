@@ -5,6 +5,7 @@
 #include <Xpetra_CrsGraphFactory.hpp>
 #include <Xpetra_Map.hpp>
 #include <Xpetra_ImportFactory.hpp>
+#include <fstream>
 
 
 #ifndef FEDD_TIMER_START
@@ -17,6 +18,24 @@
 
 
 namespace FEDD{
+
+#define RESET   "\033[0m"
+#define BLACK   "\033[30m"      /* Black */
+#define RED     "\033[31m"      /* Red */
+#define GREEN   "\033[32m"      /* Green */
+#define YELLOW  "\033[33m"      /* Yellow */
+#define BLUE    "\033[34m"      /* Blue */
+#define MAGENTA "\033[35m"      /* Magenta */
+#define CYAN    "\033[36m"      /* Cyan */
+#define WHITE   "\033[37m"      /* White */
+#define BOLDBLACK   "\033[1m\033[30m"      /* Bold Black */
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define BOLDGREEN   "\033[1m\033[32m"      /* Bold Green */
+#define BOLDYELLOW  "\033[1m\033[33m"      /* Bold Yellow */
+#define BOLDBLUE    "\033[1m\033[34m"      /* Bold Blue */
+#define BOLDMAGENTA "\033[1m\033[35m"      /* Bold Magenta */
+#define BOLDCYAN    "\033[1m\033[36m"      /* Bold Cyan */
+#define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
     
 template<class ForwardIt, class GO>
 ForwardIt uniqueWithCombines(ForwardIt first, ForwardIt last, std::vector<std::vector<GO> >& combines)
@@ -227,9 +246,19 @@ void waitForGdbAttach(){
     char hostname[256];
     gethostname(hostname, sizeof(hostname));
     printf("PID %d on %s ready for attach\n", getpid(), hostname);
+    auto fs = std::fstream{"pid_for_debugger.txt", std::ios::out | std::ios::trunc};
+    fs<< getpid();
+    fs.close();
     fflush(stdout);
     while (0 == i)
         sleep(5);
+}
+
+inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
+    if (comm->getRank() == 0) {
+        std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
+    }
+    comm->barrier();
 }
 }
 #endif

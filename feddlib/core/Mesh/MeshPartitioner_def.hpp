@@ -7,6 +7,7 @@
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <FROSch_Tools_def.hpp>
 #include <Teuchos_ArrayViewDecl.hpp>
+#include <Teuchos_Assert.hpp>
 #include <Teuchos_ConfigDefs.hpp>
 #include <Teuchos_RCPBoostSharedPtrConversionsDecl.hpp>
 #include <Teuchos_RCPDecl.hpp>
@@ -1168,7 +1169,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     // Specify how many times to partition. Best partition is chosen. Default = 1
     /* options[METIS_OPTION_NCUTS] */
     // Iterations of refinement algos at each uncoarsening step. Default = 10
-    options[METIS_OPTION_NITER] = 10;
+    options[METIS_OPTION_NITER] = 50;
     // Allowed load imbalance
     /* options[METIS_OPTION_UFACTOR] */
     // Minimize maximum connectivity between subdomains. 1 = explicitly minimize
@@ -1176,11 +1177,11 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     // Try to produce contiguous partitions i.e. no reordering of the connectivity matrix
     options[METIS_OPTION_CONTIG] = pList_->get("Contiguous", false);
     // Seed for random number generator
-    options[METIS_OPTION_SEED] = 44;
+    options[METIS_OPTION_SEED] = 555;
     // Start at zero or one
     options[METIS_OPTION_NUMBERING] = indexBase;
     // Verbosity level during execution of the algo
-    options[METIS_OPTION_DBGLVL] = 0;
+    /* options[METIS_OPTION_DBGLVL] = METIS_DBG_INFO; */
 
     idx_t edgecut = 0;
     vec_idx_Type partVec(nvtxs, -1);
@@ -1194,11 +1195,14 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     }
 
     if (nparts > 1) {
-        idx_t returnCode = METIS_PartGraphKway(&nvtxs, &ncon, xadj, adjncy, NULL, NULL, NULL, &nparts, NULL, NULL,
-                                               options, &edgecut, part);
+        idx_t returnCode = METIS_PartGraphRecursive(&nvtxs, &ncon, xadj, adjncy, NULL, NULL, NULL, &nparts, NULL, NULL,
+                                                    options, &edgecut, part);
         if (myRank == 0) {
             cout << "\n--\t Metis return code: " << returnCode;
         }
+        const auto [min, max] = std::minmax_element(partVec.begin(), partVec.end());
+        TEUCHOS_TEST_FOR_EXCEPTION(nparts - 1 != *max - *min, std::runtime_error,
+                                   "METIS did not manage to partition dual graph into requested number of partitions.");
     } else {
         for (auto &temp : partVec) {
             temp = 0;
@@ -1242,8 +1246,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     /* } */
     /* newDualGraph->describe(*out, Teuchos::VERB_EXTREME); */
 
-    // TODO KHo build repeated and unique maps and element and point lists before increasing overlap
-    //  Cast to pointer-to-const for FROSch function
+    // Cast to pointer-to-const for FROSch function
     auto graphExtended = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(newDualGraph);
 
     // Extend overlap by specified number of times
@@ -1383,8 +1386,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     }
 
     // Setting overlapping points and flags
-    meshUnstr->pointsOverlapping_.reset(new std::vector<std::vector<double>>(meshUnstr->mapOverlapping_->getNodeNumElements(),
-                                                                     std::vector<double>(dim, -1.)));
+    meshUnstr->pointsOverlapping_.reset(new std::vector<std::vector<double>>(
+        meshUnstr->mapOverlapping_->getNodeNumElements(), std::vector<double>(dim, -1.)));
     meshUnstr->bcFlagOverlapping_.reset(new std::vector<int>(meshUnstr->mapOverlapping_->getNodeNumElements(), 0));
 
     for (int i = 0; i < pointsOverlappingIndices.size(); i++) {
