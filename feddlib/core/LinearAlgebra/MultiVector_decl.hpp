@@ -152,6 +152,10 @@ public:
     MultiVectorPtr_Type sumColumns() const;
     
     SC getMax() const;
+
+
+ // ################ Nonlinear Schwarz related functions ################
+ void replaceMap(const MapConstPtr_Type newMap);
     
 private:
 

@@ -143,7 +143,7 @@ template <class SC, class LO, class GO, class NO> vec_int_ptr_Type Mesh<SC, LO, 
 }
 
 template <class SC, class LO, class GO, class NO>
-typename Mesh<SC, LO, GO, NO>::ElementsPtr_Type Mesh<SC, LO, GO, NO>::getElementsC() {
+typename Mesh<SC, LO, GO, NO>::ElementsPtr_Type Mesh<SC, LO, GO, NO>::getElementsC() const {
     return elementsC_;
 }
 
@@ -540,31 +540,51 @@ typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElement
 }
 
 template <class SC, class LO, class GO, class NO>
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMapOverlappingInterior() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlappingInterior_.is_null(), std::runtime_error,
+                               "Interior overlapping element map of mesh does not exist.");
+    return elementMapOverlappingInterior_;
+}
+
+template <class SC, class LO, class GO, class NO>
 typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() const {
     TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error,
                                "Overlapping element map of mesh does not exist.");
     return mapOverlapping_;
 }
 
-// Replace all unique and repeated members in these functions as required by the application.
 template <class SC, class LO, class GO, class NO>
-void Mesh<SC, LO, GO, NO>::replaceRepeatedMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const {
-    // Ensure that all members being replaced have the same number of local elements
-    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(),
-                               std::runtime_error,
-                               "New memembers must have the same number of local elements");
-    this->mapRepeated_ = newMap;
-    this->pointsRep_ = newPoints;
+typename Mesh<SC, LO, GO, NO>::ElementsPtr_Type Mesh<SC, LO, GO, NO>::getElementsOverlapping() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementsOverlapping_.is_null(), std::runtime_error,
+                               "Overlapping elements have not been constructed.");
+    return elementsOverlapping_;
 }
 
 template <class SC, class LO, class GO, class NO>
-void Mesh<SC, LO, GO, NO>::replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const {
+void Mesh<SC, LO, GO, NO>::setElementsC(ElementsPtr_Type newElements) const {
+    elementsC_ = newElements;
+}
+// Replace all unique and repeated members in these functions as required by the application.
+template <class SC, class LO, class GO, class NO>
+void Mesh<SC, LO, GO, NO>::replaceRepeatedMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                                                  const vec_int_ptr_Type newBCs) const {
     // Ensure that all members being replaced have the same number of local elements
-    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(),
-                               std::runtime_error,
+    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(), std::runtime_error,
+                               "New memembers must have the same number of local elements");
+    this->mapRepeated_ = newMap;
+    this->pointsRep_ = newPoints;
+    this->bcFlagRep_ = newBCs;
+}
+
+template <class SC, class LO, class GO, class NO>
+void Mesh<SC, LO, GO, NO>::replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                                                const vec_int_ptr_Type newBCs) const {
+    // Ensure that all members being replaced have the same number of local elements
+    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(), std::runtime_error,
                                "New memembers must have the same number of local elements");
     this->mapUnique_ = newMap;
     this->pointsUni_ = newPoints;
+    this->bcFlagUni_ = newBCs;
 }
 
 

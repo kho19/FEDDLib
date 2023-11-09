@@ -225,7 +225,7 @@ void make_unique( std::vector<T>& in )
     in.erase( it, in.end() );
 };
 
-// 
+// ################# Nonlinear Schwarz related functions
 template <class LO, class GO, class NO>
 int ExtendOverlapByOneLayer(Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> inputGraph,
                             Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> &outputGraph) {
@@ -240,23 +240,22 @@ int ExtendOverlapByOneLayer(Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> inp
     return 0;
 }
 
-template<typename T>
-void waitForGdbAttach(){
- volatile T i = 0;
+template <typename T> void waitForGdbAttach() {
+    volatile T i = 0;
     char hostname[256];
     gethostname(hostname, sizeof(hostname));
     printf("PID %d on %s ready for attach\n", getpid(), hostname);
     auto fs = std::fstream{"pid_for_debugger.txt", std::ios::out | std::ios::trunc};
-    fs<< getpid();
+    fs << getpid();
     fs.close();
     fflush(stdout);
     while (0 == i)
-        sleep(5);
+            sleep(5);
 }
 
 inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
-        std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
+            std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
     }
     comm->barrier();
 }

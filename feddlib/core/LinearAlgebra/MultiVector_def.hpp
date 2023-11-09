@@ -425,5 +425,15 @@ SC MultiVector<SC,LO,GO,NO>::getMax() const{
 //    return ;
 //}
 
+// ################ Nonlinear Schwarz related functions ################
+
+template <class SC, class LO, class GO, class NO>
+void MultiVector<SC, LO, GO, NO>::replaceMap(const MapConstPtr_Type newMap) {
+    multiVector_->replaceMap(newMap->getXpetraMap());
+    map_ = newMap;
+    // Replacing the map makes existing importers/exporterts obsolete
+    importer_.reset();
+    exporter_.reset();
+}
 }
 #endif

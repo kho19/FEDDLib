@@ -8,7 +8,6 @@
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
-#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_TestForException.hpp>
@@ -16,6 +15,8 @@
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
 #include <stdexcept>
+
+#include "Epetra_MpiComm.h"
 
 void zeroDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = 0.; }
 
@@ -82,7 +83,7 @@ int main(int argc, char *argv[]) {
     // Set default values for command line parameters
     // ########################
 
-    const bool debug = true;
+    const bool debug = false;
     if (comm->getRank() == 0 && debug) {
         waitForGdbAttach<LO>();
     }
@@ -146,7 +147,7 @@ int main(int argc, char *argv[]) {
         domain = domainP1;
     } else {
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
-                                   "Can only use unstructured mesh with nonlinea Schwarz for now.");
+                                   "Can only use unstructured mesh with nonlinear Schwarz for now.");
     }
     // ########################
     // Set flags for the boundary conditions
@@ -154,9 +155,6 @@ int main(int argc, char *argv[]) {
 
     Teuchos::RCP<BCBuilder<SC, LO, GO, NO>> bcFactory(new BCBuilder<SC, LO, GO, NO>());
     bcFactory->addBC(zeroDirichlet, 1, 0, domain, "Dirichlet", 1);
-    bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
-    bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
-    bcFactory->addBC(zeroDirichlet, 4, 0, domain, "Dirichlet", 1);
 
     auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
 
@@ -188,17 +186,13 @@ int main(int argc, char *argv[]) {
 
         Teuchos::RCP<const MultiVector<SC, LO, GO, NO>> exportSolution = nonLinLaplace->getSolution()->getBlock(0);
 
-        logGreen("Solution map for paraview", comm);
-        exportSolution->getMap()->print();
-        logGreen("Solution data", comm);
-        exportSolution->print();
-    
-        std::cout << "Line 1\n";
+        /* logGreen("Solution map for paraview", comm); */
+        /* exportSolution->getMap()->print(); */
+        /* logGreen("Solution data", comm); */
+        /* exportSolution->print(); */
+
         exPara->setup("solutionNonLinSchwarz", domain->getMesh(), FEType);
-        std::cout << "Line 2\n";
-        comm->barrier();
         exPara->addVariable(exportSolution, "u", "Scalar", 1, domain->getMapUnique(), domain->getMapUniqueP2());
-        std::cout << "Line 3\n";
         exPara->save(0.0);
     }
 

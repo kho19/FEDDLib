@@ -97,7 +97,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     virtual void dummy() = 0;
 
-    ElementsPtr_Type getElementsC();
+    ElementsPtr_Type getElementsC() const;
 
     ElementsPtr_Type getSurfaceElements();
 
@@ -145,11 +145,16 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     // ##################### Nonlinear Schwarz related functions ###############
     MapConstPtr_Type getElementMapOverlapping() const;
+    MapConstPtr_Type getElementMapOverlappingInterior() const;
     MapConstPtr_Type getMapOverlapping() const;
+    ElementsPtr_Type getElementsOverlapping() const;
 
     // Have to make these const and the maps mutable to fit to the const structure of problem <- domain <- mesh
-    void replaceRepeatedMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const;
-    void replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints) const;
+    void setElementsC(ElementsPtr_Type newElements) const;
+    void replaceRepeatedMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                                const vec_int_ptr_Type newBCs) const;
+    void replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                              const vec_int_ptr_Type newBCs) const;
     /* ###################################################################### */
 
     int dim_;
@@ -162,14 +167,14 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     mutable MapPtr_Type mapRepeated_;
     mutable vec2D_dbl_ptr_Type pointsRep_;
     mutable vec2D_dbl_ptr_Type pointsUni_;
-    vec_int_ptr_Type bcFlagRep_;
-    vec_int_ptr_Type bcFlagUni_;
+    mutable vec_int_ptr_Type bcFlagRep_;
+    mutable vec_int_ptr_Type bcFlagUni_;
 
     ElementsPtr_Type surfaceElements_;
 
     // Object containing all elements on current rank
     // Exposes a number of utility functions
-    ElementsPtr_Type elementsC_;
+    mutable ElementsPtr_Type elementsC_;
     MapPtr_Type elementMap_;
     MapPtr_Type edgeMap_;
 
@@ -195,16 +200,21 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     tuple_intint_Type rankRange_;
 
-    // Nonlinear Schwarz related member variables
+    // ######################## Nonlinear Schwarz related member variables
     // dualGraph_ does not need its own map since its row map = elementMapOverlapping_
+    // TODO: KHo does dualGraph even need to be saved?
     GraphPtr_Type dualGraph_;
-    // contents of elementsC_ built according to this map in nonlinear Schwarz
+    // Overlapping subdomain elements
     MapPtr_Type elementMapOverlapping_;
+    // Only interior elements of the subdomain
+    MapPtr_Type elementMapOverlappingInterior_;
     // Overlapping partition of nodes for nonlinear Schwarz method
     MapPtr_Type mapOverlapping_;
     // List of points in the overlapping subdomain
     vec2D_dbl_ptr_Type pointsOverlapping_;
     vec_int_ptr_Type bcFlagOverlapping_;
+    // Elements in overlapping subdomain
+    ElementsPtr_Type elementsOverlapping_;
 
     /* ###################################################################### */
 private:

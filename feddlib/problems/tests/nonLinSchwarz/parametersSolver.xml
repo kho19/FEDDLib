@@ -25,7 +25,7 @@
     </ParameterList>
     <ParameterList name="Nonlinear Schwarz Solver">
         <ParameterList name="Inner Newton">
-            <Parameter name="relNonLinTol" type="double" value="1.0e-4"/>
+            <Parameter name="relNonLinTol" type="double" value="1.0e-3"/>
             <Parameter name="MaxNonLinIts" type="int" value="50"/>
             <Parameter name="Criterion" type="string" value="Residual"/>     
       </ParameterList>

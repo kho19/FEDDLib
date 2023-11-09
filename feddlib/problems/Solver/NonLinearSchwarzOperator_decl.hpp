@@ -114,7 +114,9 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     int buildElementNodeList();
 
   private:
-    void assemble(XMatrixPtr localJacobian, XMultiVectorPtr localRHS);
+    
+    void replaceMapAndExportProblem();
+  
 
     // FEDDLib problem object. (will need to be changed for interoperability)
     NonLinearProblemPtr problem_;
@@ -145,6 +147,11 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     // Vectors for saving repeated and unique points
     FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
     FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
+    // Vectors for saving the boundary conditios
+    FEDD::vec_int_ptr_Type bcFlagRepTmp_;
+    FEDD::vec_int_ptr_Type bcFlagUniTmp_;
+    // Vector of elements for saving elementsC_
+    Teuchos::RCP<FEDD::Elements> elementsCTmp_;
 };
 
 } // namespace FROSch
