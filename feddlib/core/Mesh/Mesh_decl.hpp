@@ -202,7 +202,6 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     // ######################## Nonlinear Schwarz related member variables
     // dualGraph_ does not need its own map since its row map = elementMapOverlapping_
-    // TODO: KHo does dualGraph even need to be saved?
     GraphPtr_Type dualGraph_;
     // Overlapping subdomain elements
     MapPtr_Type elementMapOverlapping_;

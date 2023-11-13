@@ -209,12 +209,21 @@ void solve(NonLinearProblemPtr_Type problem) {
         new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(mpiComm, problem->getParameterList(), problem));
 
     // Set initial guess
-    auto initialU = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapOverlapping(), 1));
-    initialU->putScalar(0);
-    auto tempOut = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapOverlapping(), 1));
-    NonLinearSchwarzOp->initialize();
+    auto initialU = Teuchos::rcp(new BlockMultiVector_Type(1));
+    auto tempBlockU = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
+    tempBlockU->putScalar(0);
+    initialU->addBlock(tempBlockU, 0);
 
-    NonLinearSchwarzOp->apply(*initialU->getXpetraMultiVectorNonConst(), *tempOut->getXpetraMultiVectorNonConst());
+    auto tempOut = Teuchos::rcp(new BlockMultiVector_Type(1));
+    auto tempBlockOut = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
+    tempBlockOut->putScalar(0);
+    tempOut->addBlock(tempBlockOut, 0);
+
+    NonLinearSchwarzOp->initialize();
+    NonLinearSchwarzOp->apply(initialU, tempOut);
+
+    problem->solution_ = tempOut;
+    problem->solution_->getBlock(0)->print();
 
     // Define convergence requirements
     /* double gmresIts = 0.; */

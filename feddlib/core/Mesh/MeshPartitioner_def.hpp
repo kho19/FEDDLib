@@ -1260,7 +1260,10 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     auto extendedElementMap = FROSch::SortMapByGlobalIndex(graphExtended->getRowMap());
     meshUnstr->elementMapOverlappingInterior_.reset(new Map(extendedElementMap));
 
-    // Extend by an extra layer here which is needed for local assembly on each subdomain
+    // Extend by an extra layer, sometimes denoted "ghost layer"
+    // This is required to facilitate local assembly of a Dirichlet problem. Zero Dirichlet boundary conditions are
+    // prescribed on the ghost layer while solving. This is equivalent to assembling the Neumann matrix on the subdomain
+    // including ghost layer and subsequently extracting the submatrix corresponding to interior nodes for solving
     ExtendOverlapByOneLayer(graphExtended, graphExtended);
 
     // Sort extended map
@@ -1313,6 +1316,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     // Fill repeated and overlapping maps of nodes
     vec_GO_Type pointsRepIndices(0);
     vec_GO_Type pointsOverlappingIndices(0);
+    // Also keep track of which nodes belong to the subdomain interior
+    // This is needed to set zero Dirichlet boundary conditions on the edge nodes later on
     vec_GO_Type pointsOverlappingInteriorIndices(0);
 
     // Iterate over elementsMap_
@@ -1364,8 +1369,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     meshUnstr->elementsOverlapping_.reset(new Elements(FEType, dim));
     meshUnstr->elementsC_.reset(new Elements(FEType, dim));
 
-    // This could be done in the previous loop by adding a counter to emulate
-    // elementMapOverlapping_->getGlobalElement(i).
     /* logGreen("mapOverlapping_", comm_); */
     /* meshUnstr->mapOverlapping_->print(); */
     /* logGreen("mapRepeated_", comm_); */
@@ -1400,8 +1403,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     if (myRank == 0) {
         cout << "--- Building overlapping, unique & repeated points ... \n" << flush;
     }
-    // The nodes were deleted in readMesh() so read them again
-    /* meshUnstr->readMeshEntity("node"); */
     // pointsRep_ contains all points after reading from mesh
     vec2D_dbl_Type points = *meshUnstr->getPointsRepeated();
     // At this point bcFlagRep_ constains all BC flags of the mesh, not only those belonging to the current subdomain

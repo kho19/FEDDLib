@@ -3,6 +3,8 @@
 
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
+#include "feddlib/core/LinearAlgebra/BlockMultiVector_decl.hpp"
+#include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/Mesh/Mesh_decl.hpp"
 #include "feddlib/problems/abstract/NonLinearProblem_decl.hpp"
 #include <FROSch_SchwarzOperator_def.hpp>
@@ -81,13 +83,15 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     using ConstSCVecView = typename SchwarzOperator<SC, LO, GO, NO>::ConstSCVecView;
 
-    using MeshPtr = typename Teuchos::RCP<FEDD::Mesh<SC, LO, GO, NO>>;
-
-    using NonLinearProblemPtr = typename Teuchos::RCP<FEDD::NonLinearProblem<SC, LO, GO, NO>>;
+    using MeshPtrFEDD = typename Teuchos::RCP<FEDD::Mesh<SC, LO, GO, NO>>;
+    using NonLinearProblemPtrFEDD = typename Teuchos::RCP<FEDD::NonLinearProblem<SC, LO, GO, NO>>;
+    using BlockMultiVectorPtrFEDD = typename Teuchos::RCP<FEDD::BlockMultiVector<SC, LO, GO, NO>>;
+    using MapConstPtrFEDD = typename Teuchos::RCP<const FEDD::Map<LO, GO, NO>>;
+   
+   
 
   public:
-    NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList,
-                             NonLinearProblemPtr problem);
+    NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList, NonLinearProblemPtrFEDD problem);
 
     ~NonLinearSchwarzOperator();
 
@@ -99,7 +103,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     int compute();
 
-    void apply(const XMultiVector &x, XMultiVector &y, SC alpha = ScalarTraits<SC>::one(),
+    void apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y, SC alpha = ScalarTraits<SC>::one(),
                SC beta = ScalarTraits<SC>::zero());
 
     // This apply method must be overridden but does not make sense in the context of nonlinear operators
@@ -110,28 +114,15 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     string description() const;
 
-    // TODO KHo might need this
-    int buildElementNodeList();
-
   private:
-    
     void replaceMapAndExportProblem();
-  
 
     // FEDDLib problem object. (will need to be changed for interoperability)
-    NonLinearProblemPtr problem_;
-    // Dual graph of the mesh to operate on
-    GraphPtr dualGraph_;
-    // Jacobian and rhs for local Newtons method
-    XMatrixPtr localJacobian_;
-    XMultiVectorPtr localRHS_;
+    NonLinearProblemPtrFEDD problem_;
     // Current point of evaluation. Null if none has been passed
-    XMultiVectorPtr x_;
+    BlockMultiVectorPtrFEDD x_;
     // Current output. Null if no valid output stored.
-    mutable XMultiVectorPtr fX_;
-    // Temp Vectors for apply()
-    mutable XMultiVectorPtr xTmp_;
-    mutable XMultiVectorPtr yTmp_;
+    BlockMultiVectorPtrFEDD y_;
 
     // Newtons method params
     double newtonTol_;
@@ -143,7 +134,6 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     ConstXMapPtr elementMapMpiTmp_;
     ConstXMapPtr elementMapOverlappingMpiTmp_;
     ConstXMapPtr mapOverlappingMpiTmp_;
-
     // Vectors for saving repeated and unique points
     FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
     FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
@@ -152,6 +142,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     FEDD::vec_int_ptr_Type bcFlagUniTmp_;
     // Vector of elements for saving elementsC_
     Teuchos::RCP<FEDD::Elements> elementsCTmp_;
+    // Current global solution of the problem
+    BlockMultiVectorPtrFEDD solutionTmp_;
 };
 
 } // namespace FROSch
