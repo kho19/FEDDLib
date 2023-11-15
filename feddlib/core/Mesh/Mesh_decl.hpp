@@ -147,6 +147,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     MapConstPtr_Type getElementMapOverlapping() const;
     MapConstPtr_Type getElementMapOverlappingInterior() const;
     MapConstPtr_Type getMapOverlapping() const;
+    MapConstPtr_Type getMapOverlappingInterior() const;
     ElementsPtr_Type getElementsOverlapping() const;
 
     // Have to make these const and the maps mutable to fit to the const structure of problem <- domain <- mesh
@@ -209,6 +210,8 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     MapPtr_Type elementMapOverlappingInterior_;
     // Overlapping partition of nodes for nonlinear Schwarz method
     MapPtr_Type mapOverlapping_;
+    // Only interior nodes of the subdomain
+    MapPtr_Type mapOverlappingInterior_;
     // List of points in the overlapping subdomain
     vec2D_dbl_ptr_Type pointsOverlapping_;
     vec_int_ptr_Type bcFlagOverlapping_;

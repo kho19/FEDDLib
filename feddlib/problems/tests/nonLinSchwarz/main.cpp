@@ -155,6 +155,8 @@ int main(int argc, char *argv[]) {
 
     Teuchos::RCP<BCBuilder<SC, LO, GO, NO>> bcFactory(new BCBuilder<SC, LO, GO, NO>());
     bcFactory->addBC(zeroDirichlet, 1, 0, domain, "Dirichlet", 1);
+    // This boundary condition must be set for nonlinear Schwarz solver to correctly solve on the subdomains
+    bcFactory->addBC(zeroDirichlet, -99, 0, domain, "Dirichlet", 1);
 
     auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
 
@@ -180,7 +182,7 @@ int main(int argc, char *argv[]) {
     comm->barrier();
 
     // Export Solution
-    bool boolExportSolution = true;
+    bool boolExportSolution = false;
     if (boolExportSolution) {
         Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exPara(new ExporterParaView<SC, LO, GO, NO>());
 
@@ -211,19 +213,21 @@ void solve(NonLinearProblemPtr_Type problem) {
     // Set initial guess
     auto initialU = Teuchos::rcp(new BlockMultiVector_Type(1));
     auto tempBlockU = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
-    tempBlockU->putScalar(0);
+    tempBlockU->putScalar(1.);
     initialU->addBlock(tempBlockU, 0);
 
     auto tempOut = Teuchos::rcp(new BlockMultiVector_Type(1));
     auto tempBlockOut = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
-    tempBlockOut->putScalar(0);
+    tempBlockOut->putScalar(0.);
     tempOut->addBlock(tempBlockOut, 0);
 
     NonLinearSchwarzOp->initialize();
     NonLinearSchwarzOp->apply(initialU, tempOut);
 
-    problem->solution_ = tempOut;
-    problem->solution_->getBlock(0)->print();
+    logGreen("solution_", mpiComm);
+    problem->solution_->print();
+    logGreen("tempOut", mpiComm);
+    tempOut->print();
 
     // Define convergence requirements
     /* double gmresIts = 0.; */

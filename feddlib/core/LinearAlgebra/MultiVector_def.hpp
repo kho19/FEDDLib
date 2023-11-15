@@ -110,6 +110,11 @@ void MultiVector<SC,LO,GO,NO>::replaceGlobalValue (GO globalRow, UN vectorIndex,
 }
 
 template <class SC, class LO, class GO, class NO>
+void MultiVector<SC,LO,GO,NO>::replaceLocalValue (LO localRow, UN vectorIndex, const SC &value){
+    multiVector_->replaceLocalValue( localRow, vectorIndex, value );
+}
+
+template <class SC, class LO, class GO, class NO>
 void MultiVector<SC,LO,GO,NO>::sumIntoGlobalValue (GO globalRow, UN vectorIndex, const SC &value){
     multiVector_->sumIntoGlobalValue( globalRow, vectorIndex, value );
 }

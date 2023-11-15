@@ -11,6 +11,7 @@
 #include <Teuchos_Describable.hpp>
 #include <Teuchos_FancyOStream.hpp>
 #include <Teuchos_RCPDecl.hpp>
+#include <Teuchos_ScalarTraitsDecl.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
 
@@ -24,6 +25,8 @@
  */
 
 namespace FROSch {
+
+enum class RecombinationMode { Add, Average, Restricted };
 
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
 class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
@@ -87,8 +90,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     using NonLinearProblemPtrFEDD = typename Teuchos::RCP<FEDD::NonLinearProblem<SC, LO, GO, NO>>;
     using BlockMultiVectorPtrFEDD = typename Teuchos::RCP<FEDD::BlockMultiVector<SC, LO, GO, NO>>;
     using MapConstPtrFEDD = typename Teuchos::RCP<const FEDD::Map<LO, GO, NO>>;
-   
-   
+    using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
     NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList, NonLinearProblemPtrFEDD problem);
@@ -127,6 +129,11 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     // Newtons method params
     double newtonTol_;
     int maxNumIts_;
+    std::string criterion_;
+
+    // Recombination mode. [Restricted, Averaging, Addition]
+    RecombinationMode recombinationMode_;
+    BlockMultiVectorPtrFEDD multiplicity_;
 
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
     ConstXMapPtr mapRepeatedMpiTmp_;

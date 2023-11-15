@@ -1349,14 +1349,9 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     make_unique(pointsOverlappingIndices);
     make_unique(pointsOverlappingInteriorIndices);
 
-    // Boundary points are contained in overlapping region but not its interior
-    vec_GO_Type pointsOverlappingBoundaryIndices;
-    std::set_difference(pointsOverlappingIndices.begin(), pointsOverlappingIndices.end(),
-                        pointsOverlappingInteriorIndices.begin(), pointsOverlappingInteriorIndices.end(),
-                        std::back_inserter(pointsOverlappingBoundaryIndices));
-
     auto pointsRepIndicesView = Teuchos::arrayViewFromVector(pointsRepIndices);
     auto pointsOverlappingIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingIndices);
+    auto pointsOverlappingInteriorIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingInteriorIndices);
 
     // Set the repeated, unique and overlapping maps
     meshUnstr->mapRepeated_.reset(
@@ -1364,6 +1359,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     meshUnstr->mapUnique_ = meshUnstr->mapRepeated_->buildUniqueMap(rankRanges_.at(meshNumber));
     meshUnstr->mapOverlapping_.reset(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingIndicesView, indexBase, comm_));
+    meshUnstr->mapOverlappingInterior_.reset(
+        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingInteriorIndicesView, indexBase, comm_));
 
     // Fill elementsC_ with the elements assigned to this subdomain
     meshUnstr->elementsOverlapping_.reset(new Elements(FEType, dim));
@@ -1433,7 +1430,11 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
         meshUnstr->bcFlagOverlapping_->at(i) = flags.at(pointIDcont);
         // This only works because index lists are ordered
         if (*interiorIt != pointIDcont) {
-            meshUnstr->bcFlagOverlapping_->at(i) = 1;
+            // Only set ghost flag for points that are not on the real Dirichlet boundary
+            // Further volume flags must be added here if used in the mesh
+            /* if (meshUnstr->bcFlagOverlapping_->at(i) == 10) { */
+                meshUnstr->bcFlagOverlapping_->at(i) = -99;
+            /* } */
         } else {
             interiorIt++;
         }

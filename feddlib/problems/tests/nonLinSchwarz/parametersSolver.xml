@@ -25,9 +25,10 @@
     </ParameterList>
     <ParameterList name="Nonlinear Schwarz Solver">
         <ParameterList name="Inner Newton">
-            <Parameter name="relNonLinTol" type="double" value="1.0e-3"/>
-            <Parameter name="MaxNonLinIts" type="int" value="50"/>
+            <Parameter name="Relative Tolerance" type="double" value="1.0e-5"/>
+            <Parameter name="Max Iterations" type="int" value="50"/>
             <Parameter name="Criterion" type="string" value="Residual"/>     
+            <Parameter name="Recombination Mode" type="string" value="Average"/>     
       </ParameterList>
     </ParameterList>
     <ParameterList name="NOXSolver">

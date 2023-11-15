@@ -94,6 +94,8 @@ public:
 
     void replaceGlobalValue (GO globalRow, UN vectorIndex, const SC &value);
 
+    void replaceLocalValue (LO localRow, UN vectorIndex, const SC &value);
+
     void sumIntoGlobalValue (GO globalRow, UN vectorIndex, const SC &value);
 
     LO getLocalLength() const;

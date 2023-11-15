@@ -10,6 +10,7 @@
 #include <Teuchos_BLAS_types.hpp>
 #include <Teuchos_ParameterList.hpp>
 #include <Teuchos_RCPDecl.hpp>
+#include <Teuchos_ScalarTraitsDecl.hpp>
 #include <Teuchos_TestForException.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MapFactory_decl.hpp>
@@ -39,9 +40,10 @@ namespace FROSch {
 template <class SC, class LO, class GO, class NO>
 NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList,
                                                                    NonLinearProblemPtrFEDD problem)
-    : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem}, newtonTol_{}, maxNumIts_{}, mapRepeatedMpiTmp_{},
-      mapUniqueMpiTmp_{}, elementMapMpiTmp_{}, elementMapOverlappingMpiTmp_{}, mapOverlappingMpiTmp_{}, pointsRepTmp_{},
-      pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{}, solutionTmp_{} {
+    : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem}, newtonTol_{}, maxNumIts_{}, criterion_{""},
+      recombinationMode_{RecombinationMode::Add}, mapRepeatedMpiTmp_{}, mapUniqueMpiTmp_{}, elementMapMpiTmp_{},
+      elementMapOverlappingMpiTmp_{}, mapOverlappingMpiTmp_{}, pointsRepTmp_{}, pointsUniTmp_{}, bcFlagRepTmp_{},
+      bcFlagUniTmp_{}, elementsCTmp_{} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -58,6 +60,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
     x_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
     x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(), 1)), 0);
     y_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    multiplicity_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
 }
 
 template <class SC, class LO, class GO, class NO>
@@ -71,6 +74,37 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     auto domainVec = problem_->getDomainVector();
     auto mesh = domainVec.at(0)->getMesh();
 
+    // Extract info from parameterList
+    newtonTol_ = problem_->getParameterList()
+                     ->sublist("Nonlinear Schwarz Solver")
+                     .sublist("Inner Newton")
+                     .get("Relative Tolerance", 1.0e-6);
+    maxNumIts_ = problem_->getParameterList()
+                     ->sublist("Nonlinear Schwarz Solver")
+                     .sublist("Inner Newton")
+                     .get("Max Iterations", 10);
+    criterion_ = problem_->getParameterList()
+                     ->sublist("Nonlinear Schwarz Solver")
+                     .sublist("Inner Newton")
+                     .get("Criterion", "Residual");
+    auto recombinationModeTemp = problem_->getParameterList()
+                                     ->sublist("Nonlinear Schwarz Solver")
+                                     .sublist("Inner Newton")
+                                     .get("Recombination Mode", "Addition");
+
+    if (recombinationModeTemp == "Add") {
+        recombinationMode_ = RecombinationMode::Add;
+    } else if (recombinationModeTemp == "Average") {
+        recombinationMode_ = RecombinationMode::Average;
+    } else if (recombinationModeTemp == "Restricted") {
+        recombinationMode_ = RecombinationMode::Restricted;
+    } else {
+        if (this->MpiComm_->getRank() == 0) {
+            std::cout << "\nInvalid Recombination Mode. Defaulting to Addition" << std::endl;
+        }
+        recombinationMode_ = RecombinationMode::Add;
+    }
+
     // Build serial overlapping element and node maps
     auto elementMapOverlappingMPI = mesh->getElementMapOverlapping()->getXpetraMap();
     // Store all distributed properties that need replacing for local computations
@@ -83,6 +117,16 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     elementsCTmp_ = mesh->getElementsC();
     solutionTmp_ = problem_->getSolution();
 
+    // Compute overlap multiplicity
+    if (recombinationMode_ == RecombinationMode::Average) {
+        auto multiplicityUnique = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapUnique(), 1));
+
+        auto multiplicityRepeated = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapOverlappingInterior(), 1));
+        multiplicityRepeated->putScalar(ScalarTraits<SC>::one());
+        multiplicityUnique->exportFromVector(multiplicityRepeated, false, "Add", "Forward");
+        multiplicity_->addBlock(multiplicityUnique, 0);
+    //TODO: want to add boundary nodes on ghost layer
+    }
     return 0;
 }
 
@@ -123,8 +167,8 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     // Problems block vectors and matrices need to be reinitialized
     problem_->initializeProblem();
     // Set solution to the current input
-    problem_->solution_ = x_;
-    problem_->solution_->getBlockNonConst(0)->replaceMap(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)));
+    x_->getBlockNonConst(0)->replaceMap(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)));
+    problem_->solution_ = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>{x_});
 
     // 6. rebuild problem->u_rep_ to use overlapping map
     problem_->reInitSpecificProblemVectors(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)));
@@ -138,63 +182,96 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     double residual = 1.;
     int nlIts = 0;
     double criterionValue = 1.;
-    auto tol = problem_->getParameterList()
-                   ->sublist("Nonlinear Schwarz Solver")
-                   .sublist("Inner Newton")
-                   .get("relNonLinTol", 1.0e-6);
-    auto maxNonLinIts = problem_->getParameterList()
-                            ->sublist("Nonlinear Schwarz Solver")
-                            .sublist("Inner Newton")
-                            .get("MaxNonLinIts", 10);
-    auto criterion = problem_->getParameterList()
-                         ->sublist("Nonlinear Schwarz Solver")
-                         .sublist("Inner Newton")
-                         .get("Criterion", "Residual");
 
-    while (nlIts < maxNonLinIts) {
+    // Not using the constructor that accepts a block map since it uses const_cast rather than constructing new maps
+    std::vector<MapConstPtrFEDD> mapVector;
+    for (int i = 0; i < x_->getMap()->size(); i++) {
+        mapVector.push_back(x_->getMap()->getBlock(i));
+    }
+    // Current solution on the subdomain interior c.f. R_i*F(u-P_i*gLocal) = 0
+    auto gLocal =
+        Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>{mapVector, static_cast<int>(x_->getNumVectors())});
+    gLocal->putScalar(ST::zero());
 
+    // Need to update solution_ within each iteration to assemble at u+P_i*g_i but update only g_i
+    // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
+    // It would be more efficient to only store u on the boundary and update this value in each iteration
+    while (nlIts < maxNumIts_) {
+
+        // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
+        // this = alpha*xTmp + beta*this
+        /* FEDD::logGreen("Before update:", this->MpiComm_); */
+        /* problem_->solution_->getBlock(0)->print(); */
+
+        problem_->solution_->update(ST::one(), *x_, ST::one());
         problem_->calculateNonLinResidualVec("reverse");
+        /* FEDD::logGreen("After update:", this->MpiComm_); */
+        /* problem_->solution_->getBlock(0)->print(); */
 
-        if (criterion == "Residual")
+        if (criterion_ == "Residual") {
             residual = problem_->calculateResidualNorm();
+        }
 
-        problem_->assemble("Newton");
-
-        problem_->setBoundariesSystem();
-
-        if (nlIts == 0)
+        if (nlIts == 0) {
             residual0 = residual;
+        }
 
-        if (criterion == "Residual") {
+        if (criterion_ == "Residual") {
             criterionValue = residual / residual0;
-            if (verbose)
+            if (verbose) {
                 cout << "### Newton iteration : " << nlIts << "  relative nonlinear residual : " << criterionValue
                      << endl;
-            if (criterionValue < tol)
+            }
+            if (criterionValue < newtonTol_) {
+                // Set solution_ to g_i
+                problem_->solution_->update(-ST::one(), *x_, ST::one());
                 break;
+            }
         }
 
-        gmresIts += problem_->solveAndUpdate(criterion, criterionValue);
+        problem_->assemble("Newton");
+        /* FEDD::logGreen("RHS:", this->MpiComm_); */
+        /* problem_->residualVec_->getBlock(0)->print(); */
+        // After this rows corresponding to Dirichlet nodes are unity and residualVec_ = 0
+        problem_->setBoundariesSystem();
+        /* FEDD::logGreen("System:", this->MpiComm_); */
+        /* problem_->system_->getBlock(0, 0)->print(); */
+
+        // Changing the solution here changes the result after solveAndUpdate() since the Newton update \delta is added
+        // to the current solution
+        // Set solution_ to g_i
+        problem_->solution_->update(-ST::one(), *x_, ST::one());
+
+        gmresIts += problem_->solveAndUpdate(criterion_, criterionValue);
         nlIts++;
-        if (criterion == "Update") {
-            if (verbose)
+        if (criterion_ == "Update") {
+            if (verbose) {
                 cout << "### Newton iteration : " << nlIts << "  residual of update : " << criterionValue << endl;
-            if (criterionValue < tol)
+            }
+            if (criterionValue < newtonTol_) {
                 break;
+            }
         }
     }
+    // Set solution on ghost points to zero
+    for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
+        if (mesh->bcFlagOverlapping_->at(i) == -99) {
+            problem_->solution_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, ST::zero());
+        }
+    }
+
+    // Set all solutions to zero except for rank 0 for testing
+    /* if (this->MpiComm_->getRank() != 0) */
+    /*     problem_->solution_->putScalar(0.); */
 
     gmresIts /= nlIts;
     if (verbose)
         cout << "### Total Newton iterations : " << nlIts << "  with average gmres its : " << gmresIts << endl;
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
-        TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNonLinIts, std::runtime_error,
+        TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNumIts_, std::runtime_error,
                                    "Maximum nonlinear Iterations reached. Problem might have converged in the last "
                                    "step. Still we cancel here.");
     }
-
-    /* this->MpiComm_->barrier(); */
-    /* std::cout << "==> Current residual: " << residual << std::endl; */
 
     // ================= Restore shared objects ===============================
     //    1. comm_ to MpiComm_ in problem, domainVec, Mesh
@@ -216,8 +293,6 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
     // 5. replace elementsC_
     mesh->setElementsC(elementsCTmp_);
-    // TODO: KHo Could consider putting surrounding code into this function and do the same with the code above the
-    // solve
     this->replaceMapAndExportProblem();
     this->MpiComm_->barrier();
 
@@ -225,12 +300,6 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     problem_->reInitSpecificProblemVectors(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapRepeatedMpiTmp_)));
     // Restore current global solution
     problem_->solution_ = solutionTmp_;
-    /* FEDD::logGreen("Map repeated", this->MpiComm_); */
-    /* mesh->mapRepeated_->print(); */
-    /* FEDD::logGreen("Map unique", this->MpiComm_); */
-    /* mesh->mapUnique_->print(); */
-    /* FEDD::logGreen("Map overlapping", this->MpiComm_); */
-    /* mesh->mapOverlapping_->print(); */
     return 0;
 }
 
@@ -262,45 +331,67 @@ template <class SC, class LO, class GO, class NO> string NonLinearSchwarzOperato
     return "Nonlinear Schwarz Operator";
 }
 
+// NOTE: KHo if FROSch_OverlappingOperator is modified this functionality could be shared
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     problem_->system_.reset(new FEDD::BlockMatrix<SC, LO, GO, NO>(1));
 
-    // TODO KHo make this work for block and vector-valued systems
+    // TODO: KHo make this work for block and vector-valued systems
     auto domainPtr_vec = problem_->getDomainVector();
     auto mapUnique = domainPtr_vec.at(0)->getMapUnique();
     auto mapOverlapping = domainPtr_vec.at(0)->getMapOverlapping();
-    auto oldSolution = problem_->solution_->getBlockNonConst(0);
+    auto overlappingY = problem_->solution_->getBlockNonConst(0);
 
-    /* logGreen("old solution serial map", this->MpiComm_); */
-    /* oldSolution->print(); */
-    /* comm_->barrier(); */
-    /* logGreen("old second rank", comm_); */
-    /* if (comm_->getRank() == 1) { */
-    /*     auto solData = oldSolution->getData(0); */
-    /*     std::cout << '\n'; */
-    /*     for (auto &temp : solData) { */
-    /*         std::cout << temp << ", "; */
-    /*     } */
-    /*     std::cout << std::endl; */
+    // For testing difference between add and insert
+    /* if (this->MpiComm_->getRank() == 0) { */
+    /*     overlappingY->putScalar(1.); */
+    /* } else if (this->MpiComm_->getRank() == 1) { */
+    /*     overlappingY->putScalar(2.); */
+    /* } else if (this->MpiComm_->getRank() == 2) { */
+    /*     overlappingY->putScalar(4.); */
+    /* } else if (this->MpiComm_->getRank() == 3) { */
+    /*     overlappingY->putScalar(7.); */
     /* } */
-    /* comm_->barrier(); */
 
-    oldSolution->replaceMap(mapOverlapping);
+    overlappingY->replaceMap(mapOverlapping);
 
-    /* FEDD::logGreen("old solution mpi map", this->MpiComm_); */
-    /* oldSolution->print(); */
-    /* logGreen("overlapping map", comm_); */
-    /* mapOverlapping->print(); */
-
-    auto newSolution = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
+    auto uniqueY = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
     // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
-    newSolution->exportFromVector(oldSolution, true, "Add");
-    /* FEDD::logGreen("new solution", this->MpiComm_); */
-    /* newSolution->print(); */
-    /* logGreen("new map", comm_); */
-    /* newSolution->getMap()->print(); */
-    y_->addBlock(newSolution, 0);
+    // Use Insert since newSolution does not contain any values yet
+
+    if (recombinationMode_ == RecombinationMode::Restricted) {
+        GO globID = 0;
+        LO localID = 0;
+        for (auto i = 0; i < uniqueY->getNumVectors(); i++) {
+            auto overlappingYData = overlappingY->getData(i);
+            for (auto j = 0; j < mapUnique->getNodeNumElements(); j++) {
+                globID = mapUnique->getGlobalElement(j);
+                localID = mapOverlapping->getLocalElement(globID);
+                uniqueY->getDataNonConst(i)[j] = overlappingYData[localID];
+            }
+        }
+        // MultiVector insert mode does not add any entries i.e. only one entry from a rank is taken
+        // Export in Forward mode: the rank which is chosen to give value seems random
+        // Export in reverse mode: the rank which is chosen is the owning rank
+        // Import in Forward mode: like Export in reverse mode
+        // Import in Reverse mode: like Export in forward mode
+        // Conclusion: using an Importer results in a correct distribution. Probably because order in which mapping is
+        // done happens to be correct. Probably cannot be relied on.
+        /* uniqueY->importFromVector(overlappingY, true, "Insert", "Forward"); */
+    } else {
+        uniqueY->exportFromVector(overlappingY, true, "Add", "Forward");
+    }
+    if (recombinationMode_ == RecombinationMode::Average) {
+
+        auto scaling = multiplicity_->getBlock(0)->getData(0);
+        for (auto j = 0; j < uniqueY->getNumVectors(); j++) {
+            auto values = uniqueY->getDataNonConst(j);
+            for (auto i = 0; i < values.size(); i++) {
+                values[i] = values[i] / scaling[i];
+            }
+        }
+    }
+    y_->addBlock(uniqueY, 0);
 }
 } // namespace FROSch
 
