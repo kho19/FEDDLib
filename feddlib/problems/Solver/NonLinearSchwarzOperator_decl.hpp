@@ -118,6 +118,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
   private:
     void replaceMapAndExportProblem();
+  
+  //TODO: KHo when finished, check each variable to see if still needed
 
     // FEDDLib problem object. (will need to be changed for interoperability)
     NonLinearProblemPtrFEDD problem_;

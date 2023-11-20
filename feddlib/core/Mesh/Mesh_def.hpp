@@ -552,14 +552,14 @@ typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElement
 
 template <class SC, class LO, class GO, class NO>
 typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() const {
-    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error,
-                               "Overlapping element map of mesh does not exist.");
+    TEUCHOS_TEST_FOR_EXCEPTION(mapOverlapping_.is_null(), std::runtime_error,
+                               "Overlapping map of mesh does not exist.");
     return mapOverlapping_;
 }
 
 template <class SC, class LO, class GO, class NO>
 typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlappingInterior() const {
-    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlappingInterior_.is_null(), std::runtime_error,
+    TEUCHOS_TEST_FOR_EXCEPTION(mapOverlappingInterior_.is_null(), std::runtime_error,
                                "Overlapping interior element map of mesh does not exist.");
     return mapOverlappingInterior_;
 }

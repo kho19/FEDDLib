@@ -1260,15 +1260,6 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     auto extendedElementMap = FROSch::SortMapByGlobalIndex(graphExtended->getRowMap());
     meshUnstr->elementMapOverlappingInterior_.reset(new Map(extendedElementMap));
 
-    // Extend by an extra layer, sometimes denoted "ghost layer"
-    // This is required to facilitate local assembly of a Dirichlet problem. Zero Dirichlet boundary conditions are
-    // prescribed on the ghost layer while solving. This is equivalent to assembling the Neumann matrix on the subdomain
-    // including ghost layer and subsequently extracting the submatrix corresponding to interior nodes for solving
-    ExtendOverlapByOneLayer(graphExtended, graphExtended);
-
-    // Sort extended map
-    extendedElementMap = FROSch::SortMapByGlobalIndex(graphExtended->getRowMap());
-
     // Build graph with sorted map
     newDualGraph =
         Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, extendedElementMap->getLocalNumElements());
@@ -1277,10 +1268,9 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     newDualGraph->fillComplete(graphExtended->getDomainMap(), graphExtended->getRangeMap());
 
     meshUnstr->dualGraph_ = newDualGraph;
-    meshUnstr->elementMapOverlapping_.reset(new Map(extendedElementMap));
 
-    logGreen("Dual Graph after extending, after sorting:\n", comm_);
-    meshUnstr->dualGraph_->describe(*out, Teuchos::VERB_EXTREME);
+    /* logGreen("Dual Graph after extending, after sorting:\n", comm_); */
+    /* meshUnstr->dualGraph_->describe(*out, Teuchos::VERB_EXTREME); */
     /*     logGreen("Element map in partitionDualGraphWithOverlap()\n"); , comm_*/
     /* meshUnstr->elementMap_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
     /*     logGreen("Element map overlapping in partitionDualGraphWithOverlap()\n"); , comm_*/
@@ -1301,7 +1291,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     const auto dim = meshUnstr->getDimension();
     const auto FEType = domains_.at(meshNumber)->getFEType();
     const auto elementMap = meshUnstr->getElementMap();
-    const auto elementMapOverlapping = meshUnstr->getElementMapOverlapping();
     const auto elementMapOverlappingInterior = meshUnstr->getElementMapOverlappingInterior();
     const int indexBase = 0;
 
@@ -1315,12 +1304,11 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
 
     // Fill repeated and overlapping maps of nodes
     vec_GO_Type pointsRepIndices(0);
-    vec_GO_Type pointsOverlappingIndices(0);
     // Also keep track of which nodes belong to the subdomain interior
     // This is needed to set zero Dirichlet boundary conditions on the edge nodes later on
     vec_GO_Type pointsOverlappingInteriorIndices(0);
 
-    // Iterate over elementsMap_
+    // ==================== Build subdomain point index lists ====================
     for (auto i = 0; i < elementMap->getNodeNumElements(); i++) {
         // Get the global index of i
         auto globalID = elementMap->getGlobalElement(i);
@@ -1329,31 +1317,51 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
             pointsRepIndices.push_back(eindVec.at(j)); // Ids of element nodes, globalIDs
         }
     }
-
-    // Do the same for elementMapOverlapping_
-    for (auto i = 0; i < elementMapOverlapping->getNodeNumElements(); i++) {
+    // Do the same for elementMapOverlappingInterior_
+    for (auto i = 0; i < elementMapOverlappingInterior->getNodeNumElements(); i++) {
         // Get the global index of i
-        auto globalID = elementMapOverlapping->getGlobalElement(i);
-        auto overlappingInteriorElement = elementMapOverlappingInterior->getXpetraMap()->isNodeGlobalElement(globalID);
+        auto globalID = elementMapOverlappingInterior->getGlobalElement(i);
         // For each element add the indices corresponding to that element
         for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
-            pointsOverlappingIndices.push_back(eindVec.at(j)); // Ids of element nodes, globalIDs
-            if (overlappingInteriorElement) {
-                pointsOverlappingInteriorIndices.push_back(eindVec.at(j));
-            }
+            pointsOverlappingInteriorIndices.push_back(eindVec.at(j));
         }
     }
 
     // make_unique also sorts in ascending order
     make_unique(pointsRepIndices);
-    make_unique(pointsOverlappingIndices);
+    /* make_unique(pointsOverlappingIndices); */
     make_unique(pointsOverlappingInteriorIndices);
+
+    // Extend by an extra layer, sometimes denoted "ghost layer"
+    // This is required to facilitate local assembly of a Dirichlet problem. Zero Dirichlet boundary conditions are
+    // prescribed on the ghost layer while solving. This is equivalent to assembling the Neumann matrix on the subdomain
+    // including ghost layer and subsequently extracting the submatrix corresponding to interior nodes for solving
+
+    vec_GO_Type pointsOverlappingIndices(0);
+    vec_int_Type elementsOverlappingIndices(0);
+    // Mark all elements that have node in overlappingInterior. Remove all elements already in overlappingInterior
+    for (auto i = 0; i < meshUnstr->elementsC_->numberElements(); i++) {
+        // At this stage elementsC_ still contains all elements i.e. it is not partitioned yet
+        auto elementNodes = meshUnstr->elementsC_->getElement(i).getVectorNodeList();
+        auto allNodesAreExterior = true;
+        for (auto j = 0; j < elementNodes.size(); j++) {
+            // Since pointsOverlappingInteriorIndices is sorted, can use binary search
+            auto indexInSubdomain = std::binary_search(pointsOverlappingInteriorIndices.begin(),
+                                                       pointsOverlappingInteriorIndices.end(), elementNodes.at(j));
+            allNodesAreExterior = allNodesAreExterior && !indexInSubdomain;
+        }
+        if (!allNodesAreExterior) {
+            pointsOverlappingIndices.insert(pointsOverlappingIndices.end(), elementNodes.begin(), elementNodes.end());
+            elementsOverlappingIndices.push_back(i);
+        }
+    }
+    make_unique(pointsOverlappingIndices);
 
     auto pointsRepIndicesView = Teuchos::arrayViewFromVector(pointsRepIndices);
     auto pointsOverlappingIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingIndices);
     auto pointsOverlappingInteriorIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingInteriorIndices);
 
-    // Set the repeated, unique and overlapping maps
+    // ==================== Build repeated, unique and overlapping maps ====================
     meshUnstr->mapRepeated_.reset(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsRepIndicesView, indexBase, comm_));
     meshUnstr->mapUnique_ = meshUnstr->mapRepeated_->buildUniqueMap(rankRanges_.at(meshNumber));
@@ -1362,20 +1370,73 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     meshUnstr->mapOverlappingInterior_.reset(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingInteriorIndicesView, indexBase, comm_));
 
-    // Fill elementsC_ with the elements assigned to this subdomain
+    // ==================== Set repeated points and BC flags ====================
+    // pointsRep_ contains all points after reading from mesh
+    vec2D_dbl_Type points = *meshUnstr->getPointsRepeated();
+    // At this point bcFlagRep_ constains all BC flags of the mesh, not only those belonging to the current subdomain
+    vec_int_Type flags = *meshUnstr->getBCFlagRepeated();
+    meshUnstr->pointsRep_.reset(new std::vector<std::vector<double>>(meshUnstr->mapRepeated_->getNodeNumElements(),
+                                                                     std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagRep_.reset(new std::vector<int>(meshUnstr->mapRepeated_->getNodeNumElements(), 0));
+
+    int pointIDcont;
+    for (int i = 0; i < pointsRepIndices.size(); i++) {
+        pointIDcont = pointsRepIndices.at(i);
+        for (int j = 0; j < dim; j++)
+            meshUnstr->pointsRep_->at(i).at(j) = points.at(pointIDcont).at(j);
+        meshUnstr->bcFlagRep_->at(i) = flags.at(pointIDcont);
+    }
+
+    // ==================== Set overlapping points and BC flags ====================
+    meshUnstr->pointsOverlapping_.reset(new std::vector<std::vector<double>>(
+        meshUnstr->mapOverlapping_->getNodeNumElements(), std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagOverlapping_.reset(new std::vector<int>(meshUnstr->mapOverlapping_->getNodeNumElements(), 0));
+
+    auto interiorIt = pointsOverlappingInteriorIndices.begin();
+    for (int i = 0; i < pointsOverlappingIndices.size(); i++) {
+        pointIDcont = pointsOverlappingIndices.at(i);
+        for (int j = 0; j < dim; j++) {
+            meshUnstr->pointsOverlapping_->at(i).at(j) = points.at(pointIDcont).at(j);
+        }
+        meshUnstr->bcFlagOverlapping_->at(i) = flags.at(pointIDcont);
+        // This only works because index lists are ordered
+        if (*interiorIt != pointIDcont) {
+            // Only set ghost flag for points that are not on the real Dirichlet boundary
+            // Further volume flags must be added here if used in the mesh
+            meshUnstr->bcFlagOverlapping_->at(i) = -99;
+        } else {
+            interiorIt++;
+        }
+    }
+
+    // ==================== Set unique points and BC flags ====================
+    meshUnstr->pointsUni_.reset(new std::vector<std::vector<double>>(meshUnstr->mapUnique_->getNodeNumElements(),
+                                                                     std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagUni_.reset(new std::vector<int>(meshUnstr->mapUnique_->getNodeNumElements(), 0));
+    GO indexGlobal;
+    MapConstPtr_Type map = meshUnstr->getMapRepeated();
+    vec2D_dbl_ptr_Type pointsRep = meshUnstr->pointsRep_;
+    for (int i = 0; i < meshUnstr->mapUnique_->getNodeNumElements(); i++) {
+        indexGlobal = meshUnstr->mapUnique_->getGlobalElement(i);
+        for (int j = 0; j < dim; j++) {
+            meshUnstr->pointsUni_->at(i).at(j) = pointsRep->at(map->getLocalElement(indexGlobal)).at(j);
+        }
+        meshUnstr->bcFlagUni_->at(i) = meshUnstr->bcFlagRep_->at(map->getLocalElement(indexGlobal));
+    }
+    // ==================== Build repeated (elementsC_) and overlapping elements ====================
     meshUnstr->elementsOverlapping_.reset(new Elements(FEType, dim));
     meshUnstr->elementsC_.reset(new Elements(FEType, dim));
 
-    /* logGreen("mapOverlapping_", comm_); */
-    /* meshUnstr->mapOverlapping_->print(); */
+    logGreen("mapOverlappingInterior_", comm_);
+    meshUnstr->mapOverlappingInterior_->print();
     /* logGreen("mapRepeated_", comm_); */
     /* meshUnstr->mapRepeated_->print(); */
 
-    for (auto i = 0; i < elementMapOverlapping->getNodeNumElements(); i++) {
+    for (auto i = 0; i < elementsOverlappingIndices.size(); i++) {
         // Build local element and save
         std::vector<int> tmpElementC;
         std::vector<int> tmpElementOverlapping;
-        auto globalID = elementMapOverlapping->getGlobalElement(i);
+        auto globalID = elementsOverlappingIndices.at(i);
         auto nonOverlappingElement = elementMap->getXpetraMap()->isNodeGlobalElement(globalID);
         // Iterate over the nodes in an element
         for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
@@ -1396,65 +1457,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
             meshUnstr->elementsC_->addElement(feC);
         }
     }
-
-    if (myRank == 0) {
-        cout << "--- Building overlapping, unique & repeated points ... \n" << flush;
-    }
-    // pointsRep_ contains all points after reading from mesh
-    vec2D_dbl_Type points = *meshUnstr->getPointsRepeated();
-    // At this point bcFlagRep_ constains all BC flags of the mesh, not only those belonging to the current subdomain
-    vec_int_Type flags = *meshUnstr->getBCFlagRepeated();
-    meshUnstr->pointsRep_.reset(new std::vector<std::vector<double>>(meshUnstr->mapRepeated_->getNodeNumElements(),
-                                                                     std::vector<double>(dim, -1.)));
-    meshUnstr->bcFlagRep_.reset(new std::vector<int>(meshUnstr->mapRepeated_->getNodeNumElements(), 0));
-
-    int pointIDcont;
-    for (int i = 0; i < pointsRepIndices.size(); i++) {
-        pointIDcont = pointsRepIndices.at(i);
-        for (int j = 0; j < dim; j++)
-            meshUnstr->pointsRep_->at(i).at(j) = points.at(pointIDcont).at(j);
-        meshUnstr->bcFlagRep_->at(i) = flags.at(pointIDcont);
-    }
-
-    // Setting overlapping points and flags
-    meshUnstr->pointsOverlapping_.reset(new std::vector<std::vector<double>>(
-        meshUnstr->mapOverlapping_->getNodeNumElements(), std::vector<double>(dim, -1.)));
-    meshUnstr->bcFlagOverlapping_.reset(new std::vector<int>(meshUnstr->mapOverlapping_->getNodeNumElements(), 0));
-
-    auto interiorIt = pointsOverlappingInteriorIndices.begin();
-    for (int i = 0; i < pointsOverlappingIndices.size(); i++) {
-        pointIDcont = pointsOverlappingIndices.at(i);
-        for (int j = 0; j < dim; j++) {
-            meshUnstr->pointsOverlapping_->at(i).at(j) = points.at(pointIDcont).at(j);
-        }
-        meshUnstr->bcFlagOverlapping_->at(i) = flags.at(pointIDcont);
-        // This only works because index lists are ordered
-        if (*interiorIt != pointIDcont) {
-            // Only set ghost flag for points that are not on the real Dirichlet boundary
-            // Further volume flags must be added here if used in the mesh
-            /* if (meshUnstr->bcFlagOverlapping_->at(i) == 10) { */
-                meshUnstr->bcFlagOverlapping_->at(i) = -99;
-            /* } */
-        } else {
-            interiorIt++;
-        }
-    }
-
-    // Setting unique points and flags
-    meshUnstr->pointsUni_.reset(new std::vector<std::vector<double>>(meshUnstr->mapUnique_->getNodeNumElements(),
-                                                                     std::vector<double>(dim, -1.)));
-    meshUnstr->bcFlagUni_.reset(new std::vector<int>(meshUnstr->mapUnique_->getNodeNumElements(), 0));
-    GO indexGlobal;
-    MapConstPtr_Type map = meshUnstr->getMapRepeated();
-    vec2D_dbl_ptr_Type pointsRep = meshUnstr->pointsRep_;
-    for (int i = 0; i < meshUnstr->mapUnique_->getNodeNumElements(); i++) {
-        indexGlobal = meshUnstr->mapUnique_->getGlobalElement(i);
-        for (int j = 0; j < dim; j++) {
-            meshUnstr->pointsUni_->at(i).at(j) = pointsRep->at(map->getLocalElement(indexGlobal)).at(j);
-        }
-        meshUnstr->bcFlagUni_->at(i) = meshUnstr->bcFlagRep_->at(map->getLocalElement(indexGlobal));
-    }
-
     /*     logGreen("elementMap\n"); , comm_*/
     /* meshUnstr->elementMap_->print(); */
     /*     logGreen("elementMapOverlapping\n"); , comm_*/

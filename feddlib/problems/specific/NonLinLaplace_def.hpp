@@ -1,6 +1,7 @@
 #ifndef NonLinLaplace_def_hpp
 #define NonLinLaplace_def_hpp
 #include "NonLinLaplace_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 /*!
  Definition of NonLinLaplace
 
@@ -247,32 +248,26 @@ template <class SC, class LO, class GO, class NO>
 void NonLinLaplace<SC, LO, GO, NO>::calculateNonLinResidualVec(std::string type, double time) const {
 
     this->reAssemble("Rhs");
-    //  Seems that boundary conditions are included in the solution vector and corrected for
-    //  here Why is this a good approach?
-
-    // rhs_ contains the dirichlet boundary conditions
-    // Apparently so does bcFactory_. Not sure why both do.
     if (!type.compare("standard")) {
         // this = 1*this - 1*rhs
         this->residualVec_->update(-1., *this->rhs_, 1.);
         this->bcFactory_->setVectorMinusBC(this->residualVec_, this->solution_, time);
     } else if (!type.compare("reverse")) {
+        // rhs_ may contain the rhs of the equation. The nonlienar Laplace example is implemented so that the rhs is
+        // built into the residual evaluation
         // this = -1*this + 1*rhs
-
         this->residualVec_->update(1., *this->rhs_, -1.);
 
-        // Sets the residualVec_ at the boundary = boundary condition - solution
-        // Necessary since reAssemble("Rhs") only assembles the residual on
-        // internal nodes
+        // Sets the residualVec_ at the boundary = boundary condition - solution.
+        // This ensures that the residual is zero at the boundary when the solution fulfils the boundary conditions
         this->bcFactory_->setBCMinusVector(this->residualVec_, this->solution_, time);
     } else {
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "Unknown type for residual computation.");
     }
 }
 
-
 template <class SC, class LO, class GO, class NO>
-void NonLinLaplace<SC, LO, GO, NO>::reInitSpecificProblemVectors(const MapConstPtr_Type newMap){
+void NonLinLaplace<SC, LO, GO, NO>::reInitSpecificProblemVectors(const MapConstPtr_Type newMap) {
     this->u_rep_ = Teuchos::rcp(new MultiVector_Type(newMap));
 }
 

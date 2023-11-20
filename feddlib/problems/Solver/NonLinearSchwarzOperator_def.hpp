@@ -105,8 +105,6 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
         recombinationMode_ = RecombinationMode::Add;
     }
 
-    // Build serial overlapping element and node maps
-    auto elementMapOverlappingMPI = mesh->getElementMapOverlapping()->getXpetraMap();
     // Store all distributed properties that need replacing for local computations
     mapRepeatedMpiTmp_ = mesh->getMapRepeated()->getXpetraMap();
     mapUniqueMpiTmp_ = mesh->getMapUnique()->getXpetraMap();
@@ -121,11 +119,11 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     if (recombinationMode_ == RecombinationMode::Average) {
         auto multiplicityUnique = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapUnique(), 1));
 
-        auto multiplicityRepeated = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapOverlappingInterior(), 1));
+        auto multiplicityRepeated =
+            Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapOverlappingInterior(), 1));
         multiplicityRepeated->putScalar(ScalarTraits<SC>::one());
         multiplicityUnique->exportFromVector(multiplicityRepeated, false, "Add", "Forward");
         multiplicity_->addBlock(multiplicityUnique, 0);
-    //TODO: want to add boundary nodes on ghost layer
     }
     return 0;
 }

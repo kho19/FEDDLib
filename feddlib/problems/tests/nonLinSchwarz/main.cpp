@@ -128,7 +128,6 @@ int main(int argc, char *argv[]) {
     // Build mesh
     // ########################
     DomainPtr_Type domain;
-    GraphPtr_Type dualGraph;
     if (!meshType.compare("unstructured")) {
         Teuchos::RCP<Domain<SC, LO, GO, NO>> domainP1;
         domainP1.reset(new Domain<SC, LO, GO, NO>(comm, dim));
@@ -141,7 +140,7 @@ int main(int argc, char *argv[]) {
 
         partitionerP1.readMesh();
         partitionerP1.buildDualGraph(0);
-        partitionerP1.partitionDualGraphWithOverlap(0, 0);
+        partitionerP1.partitionDualGraphWithOverlap(0, 2);
         partitionerP1.buildSubdomainFEsAndNodeLists(0);
 
         domain = domainP1;
@@ -155,6 +154,9 @@ int main(int argc, char *argv[]) {
 
     Teuchos::RCP<BCBuilder<SC, LO, GO, NO>> bcFactory(new BCBuilder<SC, LO, GO, NO>());
     bcFactory->addBC(zeroDirichlet, 1, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 4, 0, domain, "Dirichlet", 1);
     // This boundary condition must be set for nonlinear Schwarz solver to correctly solve on the subdomains
     bcFactory->addBC(zeroDirichlet, -99, 0, domain, "Dirichlet", 1);
 
@@ -182,7 +184,7 @@ int main(int argc, char *argv[]) {
     comm->barrier();
 
     // Export Solution
-    bool boolExportSolution = false;
+    bool boolExportSolution = true;
     if (boolExportSolution) {
         Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exPara(new ExporterParaView<SC, LO, GO, NO>());
 
@@ -228,6 +230,7 @@ void solve(NonLinearProblemPtr_Type problem) {
     problem->solution_->print();
     logGreen("tempOut", mpiComm);
     tempOut->print();
+    problem->solution_ = tempOut;
 
     // Define convergence requirements
     /* double gmresIts = 0.; */
@@ -244,11 +247,8 @@ void solve(NonLinearProblemPtr_Type problem) {
     /* localAssembly(problem); */
     // TODO build the global Jacobian and rhs
     //  Points to consider:
-    //   - The local problems are distributed, so building the global problem will require communicating these
     //   - The global (linear) problem should be solved with gmres, the problem matrix should also be distributed.
     //   Have to think of how to do this assembly plus redistribution.
-    //   - Do I actually assemble a matrix or build an operator that does the same thing as a matrix? Check how
-    //   FROSch achieves this with operators.
     //   - Set the Problems system matrix and rhs to be the constructed global Jacobian and rhs. Then we can solve
     //   the system as bellow.
     //
@@ -257,33 +257,4 @@ void solve(NonLinearProblemPtr_Type problem) {
     //
     // TODO update the current solution
     /* } */
-}
-
-// Solve the linear problem on the local overlapping subdomain
-void localAssembly(NonLinearProblemPtr_Type problem) {
-
-    // TODO iterate over each element here to assemble the local Jacobian and rhs (like in FE_def)
-    // maybe even consider using the existing assemble function in FE_def? The elements over which are assembled are
-    // those stored in elementsC. The only thing that might not fit is that the whole system is assembled together.
-    // - use a FROSch subdomain solver in each Newton iteration! The apply method inverts matrix A
-    //
-    // Notes FROSch:
-    //  - submatrices are stored in a Matrix object (how is the map constructed?)
-    //  - local solutions are computed with direct solvers (Amesos2) in a three-step process: 1. the symbolic
-    //  factorisation is computed giving the sparsity pattern of the matrix, 2. the numerical factorisation is computed
-    //  resulting in L and U, 3. the system is solved.
-    //  - SchwarzOperator has systemMatrix K_, subdomainMatrix_, localSubdomainMatrix_
-    //     - K_ holds the system nonoverlapping
-    //     - subdomainMatrix_ holds the systemMatrix in an overlapping fashion
-    //     - localSubdomainMatrix_ (I THINK) holds the local subdomain on each rank. I am not sure how this is inverted
-    //       though since I thought inversion would act as if the matrix is distributed across all ranks.
-    //     - What about OverlappingMatrix_ seems to serve the same purpose as localSubdomainMatrix_
-    //        - initializeSubdomainSolver is done with overlappingMatrix_ in overlappingOperator in method
-    //          computeOverlappingOperator which is only called in compute() in algebraicOverlappingOperator.
-    //        - with localSubdomainMatrix_ in algebraicOverlappingOperator in method initialize()
-    //
-    //  - FROSch_OverlappingOperator::computeOverlappingOperator() calls the subdomainSolver_ compute() function. In
-    //    this function either the LU factorisation of the local matrix is computed or the preconditioner is generated
-    //    if solving iteratively. The subdomainSolver_->apply() then solves the system, but using either one of the
-    //    precomputed LU factorisation or preconditioner.
 }
