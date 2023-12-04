@@ -1427,8 +1427,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     meshUnstr->elementsOverlapping_.reset(new Elements(FEType, dim));
     meshUnstr->elementsC_.reset(new Elements(FEType, dim));
 
-    logGreen("mapOverlappingInterior_", comm_);
-    meshUnstr->mapOverlappingInterior_->print();
+    /* logGreen("mapOverlappingInterior_", comm_); */
+    /* meshUnstr->mapOverlappingInterior_->print(); */
     /* logGreen("mapRepeated_", comm_); */
     /* meshUnstr->mapRepeated_->print(); */
 

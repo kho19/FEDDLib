@@ -2,6 +2,7 @@
 #define NONLINEARSCHWARZOPERATOR_DEF_HPP
 
 #include "NonLinearSchwarzOperator_decl.hpp"
+#include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMatrix_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
@@ -12,11 +13,13 @@
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_ScalarTraitsDecl.hpp>
 #include <Teuchos_TestForException.hpp>
+#include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MapFactory_decl.hpp>
 #include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 /*!
@@ -61,6 +64,9 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
     x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(), 1)), 0);
     y_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
     multiplicity_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    feFactoryTmp_.reset(new FEDD::FE<SC, LO, GO, NO>());
+    feFactoryLocal_.reset(new FEDD::FE<SC, LO, GO, NO>());
+    feFactoryLocal_->addFE(problem->getDomainVector().at(0));
 }
 
 template <class SC, class LO, class GO, class NO>
@@ -75,22 +81,12 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     auto mesh = domainVec.at(0)->getMesh();
 
     // Extract info from parameterList
-    newtonTol_ = problem_->getParameterList()
-                     ->sublist("Nonlinear Schwarz Solver")
-                     .sublist("Inner Newton")
-                     .get("Relative Tolerance", 1.0e-6);
-    maxNumIts_ = problem_->getParameterList()
-                     ->sublist("Nonlinear Schwarz Solver")
-                     .sublist("Inner Newton")
-                     .get("Max Iterations", 10);
-    criterion_ = problem_->getParameterList()
-                     ->sublist("Nonlinear Schwarz Solver")
-                     .sublist("Inner Newton")
-                     .get("Criterion", "Residual");
-    auto recombinationModeTemp = problem_->getParameterList()
-                                     ->sublist("Nonlinear Schwarz Solver")
-                                     .sublist("Inner Newton")
-                                     .get("Recombination Mode", "Addition");
+    newtonTol_ =
+        problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
+    maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
+    criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
+    auto recombinationModeTemp =
+        problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Recombination Mode", "Addition");
 
     if (recombinationModeTemp == "Add") {
         recombinationMode_ = RecombinationMode::Add;
@@ -114,6 +110,7 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     bcFlagUniTmp_ = mesh->getBCFlagUnique();
     elementsCTmp_ = mesh->getElementsC();
     solutionTmp_ = problem_->getSolution();
+    feFactoryTmp_ = problem_->feFactory_;
 
     // Compute overlap multiplicity
     if (recombinationMode_ == RecombinationMode::Average) {
@@ -121,7 +118,7 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
 
         auto multiplicityRepeated =
             Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapOverlappingInterior(), 1));
-        multiplicityRepeated->putScalar(ScalarTraits<SC>::one());
+        multiplicityRepeated->putScalar(ST::one());
         multiplicityUnique->exportFromVector(multiplicityRepeated, false, "Add", "Forward");
         multiplicity_->addBlock(multiplicityUnique, 0);
     }
@@ -131,7 +128,7 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
 template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<SC, LO, GO, NO>::compute() {
 
     TEUCHOS_TEST_FOR_EXCEPTION(x_.is_null(), std::runtime_error,
-                               "The the current value of the nonlinear operator requires "
+                               "The current value of the nonlinear operator requires "
                                "an input to be computed.");
 
     auto domainVec = problem_->getDomainVector();
@@ -154,6 +151,8 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
     // 2., 3., 4. and 5. replace repeated and unique members
     auto mapOverlappingMPI = mesh->getMapOverlapping()->getXpetraMap();
+    // TODO: KHo probably do not have to rebuild this map every time. Make it a property of the class and only build
+    // once
     auto mapOverlappingLocal = Xpetra::MapFactory<LO, GO, NO>::Build(
         mapOverlappingMPI->lib(), mapOverlappingMPI->getLocalNumElements(), 0, this->SerialComm_);
     mesh->replaceRepeatedMembers(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)), mesh->pointsOverlapping_,
@@ -164,32 +163,24 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
     // Problems block vectors and matrices need to be reinitialized
     problem_->initializeProblem();
+    problem_->feFactory_ = feFactoryLocal_;
     // Set solution to the current input
     x_->getBlockNonConst(0)->replaceMap(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)));
+    // This BlockMultiVector constructor does a deep copy
+    // TODO: KHo make a local variable for this to not reconstruct at each call
     problem_->solution_ = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>{x_});
-
+    problem_->solution_->putScalar(0.);
     // 6. rebuild problem->u_rep_ to use overlapping map
     problem_->reInitSpecificProblemVectors(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal)));
 
     // Solve local nonlinear problems
-    // TODO KHo need to set the initial value here to reflect the current linearisation point
-    // TODO KHo change this to be a nox solver? Don't want FEDDLib nonlinear solver to remove depedency on the FEDDLib.
-    bool verbose = problem_->getVerbose();
+    /* bool verbose = problem_->getVerbose(); */
+    bool verbose = false;
     double gmresIts = 0.;
     double residual0 = 1.;
     double residual = 1.;
     int nlIts = 0;
     double criterionValue = 1.;
-
-    // Not using the constructor that accepts a block map since it uses const_cast rather than constructing new maps
-    std::vector<MapConstPtrFEDD> mapVector;
-    for (int i = 0; i < x_->getMap()->size(); i++) {
-        mapVector.push_back(x_->getMap()->getBlock(i));
-    }
-    // Current solution on the subdomain interior c.f. R_i*F(u-P_i*gLocal) = 0
-    auto gLocal =
-        Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>{mapVector, static_cast<int>(x_->getNumVectors())});
-    gLocal->putScalar(ST::zero());
 
     // Need to update solution_ within each iteration to assemble at u+P_i*g_i but update only g_i
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
@@ -198,13 +189,19 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
         // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
         // this = alpha*xTmp + beta*this
-        /* FEDD::logGreen("Before update:", this->MpiComm_); */
+        /* FEDD::logGreen("Before update @ iteration: " + std::to_string(nlIts), this->MpiComm_); */
         /* problem_->solution_->getBlock(0)->print(); */
 
         problem_->solution_->update(ST::one(), *x_, ST::one());
         problem_->calculateNonLinResidualVec("reverse");
         /* FEDD::logGreen("After update:", this->MpiComm_); */
         /* problem_->solution_->getBlock(0)->print(); */
+        // TODO: KHo set residual on ghost points to zero. We want to keep the original solution on the ghost points
+        for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
+            if (mesh->bcFlagOverlapping_->at(i) == -99) {
+                problem_->residualVec_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, ST::zero());
+            }
+        }
 
         if (criterion_ == "Residual") {
             residual = problem_->calculateResidualNorm();
@@ -253,8 +250,12 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     }
     // Set solution on ghost points to zero
     for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
+        auto temp = mesh->bcFlagOverlapping_->at(i);
         if (mesh->bcFlagOverlapping_->at(i) == -99) {
-            problem_->solution_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, ST::zero());
+            problem_->solution_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, 10 * ST::zero());
+            /*     FEDD::logGreen("BC flag -99 @ local index " + std::to_string(i), this->MpiComm_); */
+            /* } else if (temp == 1 || temp == 2 || temp == 3 || temp == 4) { */
+            /*     FEDD::logGreen("BC flag 1, 2, 3, 4 @ local index " + std::to_string(i), this->MpiComm_); */
         }
     }
 
@@ -294,10 +295,15 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     this->replaceMapAndExportProblem();
     this->MpiComm_->barrier();
 
-    // 6. rebuild problem->u_rep_ to use overlapping map
+    // 6. rebuild problem->u_rep_ to use repeated map
     problem_->reInitSpecificProblemVectors(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapRepeatedMpiTmp_)));
     // Restore current global solution
     problem_->solution_ = solutionTmp_;
+
+    // Restore feFactory_
+    problem_->feFactory_ = feFactoryTmp_;
+    // Make x_ distributed again for next import operation in apply()
+    x_->getBlockNonConst(0)->replaceMap(Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingMPI)));
     return 0;
 }
 
@@ -305,8 +311,12 @@ template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y,
                                                      SC alpha, SC beta) {
 
+    // TODO: KHo is this even necessary?
+    x_->getBlockNonConst(0)->putScalar(0.);
     // Save the current input
-    x_->getBlockNonConst(0)->importFromVector(x->getBlock(0), true, "Insert");
+    x_->getBlockNonConst(0)->importFromVector(x->getBlock(0), true, "Insert", "Forward");
+    /* FEDD::logGreen("Input of apply function", this->MpiComm_); */
+    /* x_->print(); */
     // Compute the value of the nonlinear operator
     this->compute();
     // y = alpha*f(x) + beta*y
@@ -339,7 +349,6 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     auto mapUnique = domainPtr_vec.at(0)->getMapUnique();
     auto mapOverlapping = domainPtr_vec.at(0)->getMapOverlapping();
     auto overlappingY = problem_->solution_->getBlockNonConst(0);
-
     // For testing difference between add and insert
     /* if (this->MpiComm_->getRank() == 0) { */
     /*     overlappingY->putScalar(1.); */
@@ -354,9 +363,6 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     overlappingY->replaceMap(mapOverlapping);
 
     auto uniqueY = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
-    // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
-    // Use Insert since newSolution does not contain any values yet
-
     if (recombinationMode_ == RecombinationMode::Restricted) {
         GO globID = 0;
         LO localID = 0;
@@ -377,6 +383,8 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
         // done happens to be correct. Probably cannot be relied on.
         /* uniqueY->importFromVector(overlappingY, true, "Insert", "Forward"); */
     } else {
+        // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
+        // Use Insert since newSolution does not contain any values yet
         uniqueY->exportFromVector(overlappingY, true, "Add", "Forward");
     }
     if (recombinationMode_ == RecombinationMode::Average) {

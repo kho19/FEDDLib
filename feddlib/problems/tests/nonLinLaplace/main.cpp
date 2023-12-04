@@ -201,12 +201,6 @@ int main(int argc, char *argv[]) {
     // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
     // between the subdomains
     NonLinLaplace.initializeProblem();
-    // Assemble the system matrix
-    NonLinLaplace.assemble();
-    // Insert boundary conditions into the system matrix and the rhs
-    NonLinLaplace.setBoundaries();
-    // Calls the same function as above to set the boundary conditions of the rhs. Redundant?
-    NonLinLaplace.setBoundariesRHS();
 
     std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "NOX");
     NonLinearSolver<SC, LO, GO, NO> nlSolverAssFE(nlSolverType);

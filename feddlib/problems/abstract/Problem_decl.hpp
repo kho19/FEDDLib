@@ -221,6 +221,8 @@ public:
 
     std::vector<RhsFunc_Type>   rhsFuncVec_; // RHS functions of different blocks
     vec_dbl_Type parasSourceFunc_; //
+
+    FEFacPtr_Type feFactory_;
     
 protected:
 
@@ -230,7 +232,6 @@ protected:
     string_vec_Type                 variableName_vec_;
     mutable BCConstPtr_Type         bcFactory_;
 
-    FEFacPtr_Type feFactory_;
     std::vector<int> dofsPerNode_vec_;
     
     /*!  sourceTerm_: Is a source term or a surface integral. Fill parasSourceFunc_ for additional parameters */

@@ -8,13 +8,21 @@
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
+#include <FROSch_AlgebraicOverlappingOperator_decl.hpp>
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_TestForException.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
+#include <Thyra_LinearOpBase_decl.hpp>
+#include <Thyra_TpetraThyraWrappers_decl.hpp>
+#include <Tpetra_Operator.hpp>
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
+#include <Xpetra_MatrixFactory.hpp>
+#include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "Epetra_MpiComm.h"
 
@@ -65,12 +73,15 @@ typedef RCP<BlockMultiVector_Type> BlockMultiVectorPtr_Type;
 
 typedef NonLinearProblem<SC, LO, GO, NO> NonLinearProblem_Type;
 typedef RCP<NonLinearProblem_Type> NonLinearProblemPtr_Type;
+typedef Teuchos::ScalarTraits<SC> ST;
+
 } // namespace NonLinearSchwarz
 
 using namespace NonLinearSchwarz;
 
 void solve(NonLinearProblemPtr_Type problem);
-void localAssembly(NonLinearProblemPtr_Type problem);
+int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp, MultiVectorPtr_Type x,
+                    MultiVectorConstPtr_Type b, ParameterListPtr_Type parameterList, bool verbose = true);
 
 int main(int argc, char *argv[]) {
 
@@ -172,8 +183,8 @@ int main(int argc, char *argv[]) {
     // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
     // between the subdomains
     nonLinLaplace->initializeProblem();
-    // Set initial guess. This has no effect here since vectors are reinitiliazed on serial comm.
-    /* nonLinLaplace->solution_->putScalar(1.); */
+    // Set initial guess
+    nonLinLaplace->solution_->putScalar(0.);
 
     // ########################
     // Solve the problem using nonlinear Schwarz
@@ -206,55 +217,168 @@ int main(int argc, char *argv[]) {
 // Solve the problem
 void solve(NonLinearProblemPtr_Type problem) {
 
+    logGreen("Commencing nonlinear Schwarz solve", problem->getComm());
+    // NOTE: KHo turn on/off printing
+    /* problem->verbose_ = false; */
     // Define nonlinear Schwarz operator
     auto domainVec = problem->getDomainVector();
     auto mpiComm = domainVec.at(0)->getComm();
     auto NonLinearSchwarzOp = Teuchos::rcp(
         new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(mpiComm, problem->getParameterList(), problem));
 
-    // Set initial guess
-    auto initialU = Teuchos::rcp(new BlockMultiVector_Type(1));
-    auto tempBlockU = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
-    tempBlockU->putScalar(1.);
-    initialU->addBlock(tempBlockU, 0);
+    // FROSch overlapping operator
+    // TODO KHo fill with dummy matrix and replace below
+    auto dummyMat = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap());
+    dummyMat->fillComplete();
+    auto FROSchOverlappingOperator =
+        Teuchos::rcp(new FROSch::AlgebraicOverlappingOperator<SC, LO, GO, NO>(dummyMat, problem->getParameterList()));
 
-    auto tempOut = Teuchos::rcp(new BlockMultiVector_Type(1));
-    auto tempBlockOut = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
-    tempBlockOut->putScalar(0.);
-    tempOut->addBlock(tempBlockOut, 0);
-
-    NonLinearSchwarzOp->initialize();
-    NonLinearSchwarzOp->apply(initialU, tempOut);
-
-    logGreen("solution_", mpiComm);
-    problem->solution_->print();
-    logGreen("tempOut", mpiComm);
-    tempOut->print();
-    problem->solution_ = tempOut;
+    // Init block vectors for nonlinear residual and outer Newton update
+    auto g = Teuchos::rcp(new BlockMultiVector_Type(1));
+    auto gBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
+    gBlock->putScalar(0.);
+    g->addBlock(gBlock, 0);
+    auto deltaSolution = Teuchos::rcp(new BlockMultiVector_Type(1));
+    auto deltaSolutionBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
+    deltaSolutionBlock->putScalar(0.);
+    deltaSolution->addBlock(deltaSolutionBlock, 0);
 
     // Define convergence requirements
-    /* double gmresIts = 0.; */
-    /* double residual0 = 1.; */
-    /* double residual = 1.; */
-    /* double outerTol = problem->getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6); */
-    /* int outerNonLinIts = 0; */
-    /* int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10); */
-    /* double relativeResidual = residual / residual0; */
+    double gmresIts = 0.;
+    double residual0 = 1.;
+    double residual = 1.;
+    double outerTol = problem->getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6);
+    int outerNonLinIts = 0;
+    int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
+    auto relativeResidual = residual / residual0;
+    // TODO: KHo fetch from paremeter list
+    auto overlap = 2;
 
-    // Outer Newton iterations
-    /* while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) { */
-    // TODO solve the local problems. These are divided over the ranks, one problem per rank.
-    /* localAssembly(problem); */
-    // TODO build the global Jacobian and rhs
-    //  Points to consider:
-    //   - The global (linear) problem should be solved with gmres, the problem matrix should also be distributed.
-    //   Have to think of how to do this assembly plus redistribution.
-    //   - Set the Problems system matrix and rhs to be the constructed global Jacobian and rhs. Then we can solve
-    //   the system as bellow.
-    //
-    // TODO solve using the linear solve method built into Problem. This can be specified in the xml file to be
-    // gmres together with a type of preconditioner (none in this case)
-    //
-    // TODO update the current solution
+    writeParameterListToXmlFile(*problem->getParameterList(), "debug_xml_file.xml");
+
+    // Fill solution with values corresponding to global index
+    /* for (int i = 0; i < problem->solution_->getBlock(0)->getLocalLength(); i++) { */
+    /*     problem->solution_->getBlockNonConst(0)->replaceLocalValue( */
+    /*         i, 0, problem->solution_->getBlock(0)->getMap()->getGlobalElement(i)); */
     /* } */
+
+    /* logGreen("Increasing solution", mpiComm); */
+    /* problem->solution_->getBlock(0)->print(); */
+
+    // Compute the residual
+    problem->calculateNonLinResidualVec("reverse");
+    residual0 = problem->calculateResidualNorm();
+    residual = residual0;
+    relativeResidual = residual / residual0;
+    // Outer Newton iterations
+    NonLinearSchwarzOp->initialize();
+    while (relativeResidual > outerTol && outerNonLinIts < 1) {
+        logGreen("Outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
+        logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
+        // Compute current g
+        // Must call initialize here again to avoid overwriting maps etc of problem
+        // TODO: KHo for ASPEN the Schwarz Op should store the DF(u_i) and stitch them together and return them upon
+        // request as a Thyra linear op
+        // TODO: KHo probably can call initialize() only once since pointers are stored so value updates will also be
+        // stored.
+        logGreen("Computing nonlinear Schwarz operator", mpiComm);
+        /* problem->solution_->putScalar(0.); */
+        NonLinearSchwarzOp->apply(problem->getSolution(), g);
+
+        // TODO: KHo need to incorporate the boundary conditions here in some further manner? Possibly also in the
+        // Schwarz operator below?
+        // TODO: KHo assembleFEElements_ needs to be different for global assembly and local assembly.
+        // Problem->feFactory_->assembleFEElements_
+
+        // Compute DF(u) (ASPIN)
+        logGreen("Building ASPIN tangent with FROSch", mpiComm);
+        problem->assemble("Newton");
+        problem->setBoundariesSystem();
+
+        // Compute D\mathcal{F}(u) using FROSch and DF(u)
+        auto jacobian = problem->getSystem()->getBlock(0, 0)->getXpetraMatrix();
+        /* logGreen("Jacobian", mpiComm); */
+        /* problem->getSystem()->getBlock(0, 0)->print(); */
+        FROSchOverlappingOperator->resetMatrix(jacobian);
+        FROSchOverlappingOperator->initialize(overlap);
+        FROSchOverlappingOperator->compute();
+
+        /* const auto out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
+        /* auto testVec = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(g->getBlock(0)->getMapXpetra(), 1); */
+        /* FROSchOverlappingOperator->apply(*g->getBlock(0)->getXpetraMultiVector(), *testVec, true); */
+        /* logGreen("g", mpiComm); */
+        /* g->print(); */
+        /* logGreen("A*g", mpiComm); */
+        /* testVec->describe(*out, Teuchos::VERB_EXTREME); */
+        /* return; */
+
+        // Convert SchwarzOperator to Thyra::LinearOpBase
+        auto XpetraFROSchOverlappingOperator =
+            rcp_dynamic_cast<Xpetra::Operator<SC, LO, GO, NO>>(FROSchOverlappingOperator);
+
+        // TODO: KHo is the overlap being used by the FROSch operator the same?
+        RCP<FROSch::TpetraPreconditioner<SC, LO, GO, NO>> TpetraFROSchOverlappingOperator(
+            new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(XpetraFROSchOverlappingOperator));
+
+        auto TpetraOverlappingOperator =
+            rcp_dynamic_cast<Tpetra::Operator<SC, LO, GO, NO>>(TpetraFROSchOverlappingOperator);
+
+        auto ThyraFROSchOverlappingOperator = Thyra::createLinearOp(TpetraOverlappingOperator);
+
+        // Solve linear system with GMRES
+        logGreen("Solving outer linear system", mpiComm);
+        solveThyraLinOp(ThyraFROSchOverlappingOperator, deltaSolution->getBlockNonConst(0), g->getBlock(0),
+                        problem->getParameterList());
+        // Update the current solution
+        // solution = alpha * deltaSolution + beta * solution
+        problem->solution_->update(ST::one(), deltaSolution, ST::one());
+        logGreen("Update @ iteration " + std::to_string(outerNonLinIts), mpiComm);
+        g->getBlock(0)->print();
+
+        /* problem->solution_->update(ST::one(), g, ST::zero()); */
+        // Compute the residual
+        problem->calculateNonLinResidualVec("reverse");
+        residual = problem->calculateResidualNorm();
+        relativeResidual = residual / residual0;
+
+        outerNonLinIts += 1;
+    }
+    logGreen("Outer Newton iteration terminated with residual: " + std::to_string(relativeResidual), mpiComm);
+}
+
+int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp, MultiVectorPtr_Type x,
+                    MultiVectorConstPtr_Type b, ParameterListPtr_Type parameterList, bool verbose) {
+    int its = 0;
+    x->putScalar(0.);
+
+    auto thyraX = x->getThyraMultiVector();
+
+    auto thyraB = b->getThyraMultiVectorConst();
+
+    auto pListThyraSolver =
+        sublist(sublist(parameterList, "Outer Newton Nonlinear Schwarz"), "Thyra Solver Outer Newton");
+
+    writeParameterListToXmlFile(*pListThyraSolver, "thyra_solver_xml_file.xml");
+    auto linearSolverBuilder = Teuchos::rcp(new Stratimikos::DefaultLinearSolverBuilder());
+    linearSolverBuilder->setParameterList(pListThyraSolver);
+    auto lowsFactory = linearSolverBuilder->createLinearSolveStrategy("");
+
+    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
+    lowsFactory->setOStream(out);
+    lowsFactory->setVerbLevel(Teuchos::VERB_LOW);
+
+    auto solver = lowsFactory->createOp();
+    Thyra::initializeOp<SC>(*lowsFactory, thyraLinOp, solver.ptr());
+
+    Thyra::SolveStatus<SC> status = Thyra::solve<SC>(*solver, Thyra::NOTRANS, *thyraB, thyraX.ptr());
+
+    if (verbose) {
+        std::cout << status << std::endl;
+    }
+    if (!pListThyraSolver->get("Linear Solver Type", "Belos").compare("Belos")) {
+        its = status.extraParameters->get("Belos/Iteration Count", 0);
+    } else {
+        its = 0;
+    }
+    return its;
 }

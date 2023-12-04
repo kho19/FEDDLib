@@ -229,6 +229,9 @@ void make_unique( std::vector<T>& in )
 template <class LO, class GO, class NO>
 int ExtendOverlapByOneLayer(Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> inputGraph,
                             Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> &outputGraph) {
+    // In the adjacency matrix of the graph, connectivity of node i is given by row i. The column map of row i
+    // corresponds to the connectivity and by assigning ownership of all rows referenced by the column map to the rank,
+    // the local subdomain is extended by one layer of connectivity
     Teuchos::RCP<Xpetra::CrsGraph<LO, GO, NO>> tmpGraph =
         Xpetra::CrsGraphFactory<LO, GO, NO>::Build(inputGraph->getColMap(), inputGraph->getGlobalMaxNumRowEntries());
     Teuchos::RCP<Xpetra::Import<LO, GO, NO>> scatter =
@@ -259,5 +262,13 @@ inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Com
     }
     comm->barrier();
 }
+
+inline void logSimple(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
+    if (comm->getRank() == 0) {
+            std::cout << "==> " << s << '\n';
+    }
+    comm->barrier();
+}
+
 }
 #endif

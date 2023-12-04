@@ -1,6 +1,7 @@
 #ifndef NONLINEARSCHWARZOPERATOR_DECL_HPP
 #define NONLINEARSCHWARZOPERATOR_DECL_HPP
 
+#include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMultiVector_decl.hpp"
@@ -118,8 +119,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
   private:
     void replaceMapAndExportProblem();
-  
-  //TODO: KHo when finished, check each variable to see if still needed
+
+    // TODO: KHo when finished, check each variable to see if still needed
 
     // FEDDLib problem object. (will need to be changed for interoperability)
     NonLinearProblemPtrFEDD problem_;
@@ -153,6 +154,9 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     Teuchos::RCP<FEDD::Elements> elementsCTmp_;
     // Current global solution of the problem
     BlockMultiVectorPtrFEDD solutionTmp_;
+    // FE assembly factory for global and local assembly
+    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
+    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryLocal_;
 };
 
 } // namespace FROSch
