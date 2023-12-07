@@ -1,23 +1,19 @@
-//Square
+Mesh.ElementOrder = 1;
+Mesh.Format = 1;
+Mesh.MshFileVersion = 2.2;
 h = .02;
+
 Point(1) = {0, 0, 0, h};
 Point(2) = {1, 0, 0, h};
 Point(3) = {1, 1, 0, h};
 Point(4) = {0, 1, 0, h};
 
-Line(5) = {1, 2}; 
-Line(6) = {2, 3}; 
-Line(7) = {3, 4}; 
-Line(8) = {4, 1}; 
+Line(1) = {1, 2};
+Line(2) = {2, 3};
+Line(3) = {3, 4};
+Line(4) = {4, 1};
 
-Line Loop(9) = {5,6,7,8}; 
-
-Plane Surface(10) = 9;
-
-Physical Line(1) = {5};
-Physical Line(2) = {6};
-Physical Line(3) = {7};
-Physical Line(4) = {8};
-
+Curve Loop(1) = {1, 2, 3, 4};
+Plane Surface(10) = {1};
+Physical Curve(1) = {1, 2, 3, 4};
 Physical Surface(10) = {10};
-
