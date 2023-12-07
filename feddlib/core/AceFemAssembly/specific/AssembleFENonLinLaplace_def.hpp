@@ -10,7 +10,7 @@
 namespace FEDD {
 
 inline void rhsFunc(double *x, double *res, double *parameters) {
-    res[0] = 100; // x[0] * sin(x[1]);
+    res[0] = 10; // x[0] * sin(x[1]);
 }
 
 /*!

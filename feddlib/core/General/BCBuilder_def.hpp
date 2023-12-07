@@ -723,6 +723,17 @@ int BCBuilder<SC,LO,GO,NO>::dofsPerNodeAtBlock(int block) {
     
     return vecDofs_.at(distance(vecBlockID_.begin(),it));
 }
+
+//***************** Nonlinear Schwarz related functions ***************
+template <class SC, class LO, class GO, class NO>
+void BCBuilder<SC, LO, GO, NO>::setVecExternalSolAtIndex(int index, MultiVectorConstPtr_Type externalSol) const {
+    vecExternalSol_.at(index) = externalSol;
+}
+
+template <class SC, class LO, class GO, class NO>
+vec_int_Type BCBuilder<SC, LO, GO, NO>::getVecFlag() const {
+    return vecFlag_;
+}
 }
 
 #endif

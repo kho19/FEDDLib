@@ -28,6 +28,9 @@
 
 void zeroDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = 0.; }
 
+// Required for setting the Dirichlet BC on the ghost points to the current global solution in nonlinear Schwarz
+void currentSolutionDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
+
 void oneFunc2D(double *x, double *res, double *parameters) {
     res[0] = 1.;
     res[1] = 1.;
@@ -79,7 +82,7 @@ typedef Teuchos::ScalarTraits<SC> ST;
 
 using namespace NonLinearSchwarz;
 
-void solve(NonLinearProblemPtr_Type problem);
+void solve(NonLinearProblemPtr_Type problem, int overlap = 2);
 int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp, MultiVectorPtr_Type x,
                     MultiVectorConstPtr_Type b, ParameterListPtr_Type parameterList, bool verbose = true);
 
@@ -121,44 +124,29 @@ int main(int argc, char *argv[]) {
     parameterListAll->setParameters(*parameterListSolver);
 
     int dim = parameterListProblem->sublist("Parameter").get("Dimension", 2);
-    string meshType = parameterListProblem->sublist("Parameter").get("Mesh Type", "unstructured");
-    // m = dimension of square on each processor in num elements
-    int m = parameterListProblem->sublist("Parameter").get("H/h", 5);
     string FEType = parameterListProblem->sublist("Parameter").get("Discretization", "P1");
-
-    int numProcsCoarseSolve = parameterListProblem->sublist("General").get("Mpi Ranks Coarse", 0);
-    int size = comm->getSize() - numProcsCoarseSolve;
-
-    double length = 4;
-    int minNumberSubdomains = 1;
-    // n = number of procs per side
-    int n;
-    m = 1;
+    auto overlap = parameterListSolver->get("Overlap", 1);
 
     // ########################
     // Build mesh
     // ########################
     DomainPtr_Type domain;
-    if (!meshType.compare("unstructured")) {
-        Teuchos::RCP<Domain<SC, LO, GO, NO>> domainP1;
-        domainP1.reset(new Domain<SC, LO, GO, NO>(comm, dim));
+    Teuchos::RCP<Domain<SC, LO, GO, NO>> domainP1;
+    domainP1.reset(new Domain<SC, LO, GO, NO>(comm, dim));
 
-        MeshPartitioner_Type::DomainPtrArray_Type domainP1Array(1);
-        domainP1Array[0] = domainP1;
+    MeshPartitioner_Type::DomainPtrArray_Type domainP1Array(1);
+    domainP1Array[0] = domainP1;
 
-        ParameterListPtr_Type pListPartitioner = sublist(parameterListAll, "Mesh Partitioner");
-        MeshPartitioner<SC, LO, GO, NO> partitionerP1(domainP1Array, pListPartitioner, "P1", dim);
+    ParameterListPtr_Type pListPartitioner = sublist(parameterListAll, "Mesh Partitioner");
+    MeshPartitioner<SC, LO, GO, NO> partitionerP1(domainP1Array, pListPartitioner, "P1", dim);
 
-        partitionerP1.readMesh();
-        partitionerP1.buildDualGraph(0);
-        partitionerP1.partitionDualGraphWithOverlap(0, 2);
-        partitionerP1.buildSubdomainFEsAndNodeLists(0);
+    partitionerP1.readMesh();
+    partitionerP1.buildDualGraph(0);
+    partitionerP1.partitionDualGraphWithOverlap(0, overlap);
+    partitionerP1.buildSubdomainFEsAndNodeLists(0);
 
-        domain = domainP1;
-    } else {
-        TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
-                                   "Can only use unstructured mesh with nonlinear Schwarz for now.");
-    }
+    domain = domainP1;
+
     // ########################
     // Set flags for the boundary conditions
     // ########################
@@ -168,8 +156,9 @@ int main(int argc, char *argv[]) {
     bcFactory->addBC(zeroDirichlet, 2, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 3, 0, domain, "Dirichlet", 1);
     bcFactory->addBC(zeroDirichlet, 4, 0, domain, "Dirichlet", 1);
-    // This boundary condition must be set for nonlinear Schwarz solver to correctly solve on the subdomains
-    bcFactory->addBC(zeroDirichlet, -99, 0, domain, "Dirichlet", 1);
+    // The current global solution must be set as the Dirichlet BC on the ghost nodes for nonlinear Schwarz solver to
+    // correctly solve on the subdomains
+    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domain, "Dirichlet", 1);
 
     auto nonLinLaplace = Teuchos::rcp(new NonLinLaplace<SC, LO, GO, NO>(domain, FEType, parameterListAll));
 
@@ -190,7 +179,7 @@ int main(int argc, char *argv[]) {
     // Solve the problem using nonlinear Schwarz
     // ########################
 
-    solve(nonLinLaplace);
+    solve(nonLinLaplace, overlap);
 
     comm->barrier();
 
@@ -201,11 +190,6 @@ int main(int argc, char *argv[]) {
 
         Teuchos::RCP<const MultiVector<SC, LO, GO, NO>> exportSolution = nonLinLaplace->getSolution()->getBlock(0);
 
-        /* logGreen("Solution map for paraview", comm); */
-        /* exportSolution->getMap()->print(); */
-        /* logGreen("Solution data", comm); */
-        /* exportSolution->print(); */
-
         exPara->setup("solutionNonLinSchwarz", domain->getMesh(), FEType);
         exPara->addVariable(exportSolution, "u", "Scalar", 1, domain->getMapUnique(), domain->getMapUniqueP2());
         exPara->save(0.0);
@@ -215,7 +199,7 @@ int main(int argc, char *argv[]) {
 }
 
 // Solve the problem
-void solve(NonLinearProblemPtr_Type problem) {
+void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     logGreen("Commencing nonlinear Schwarz solve", problem->getComm());
     // NOTE: KHo turn on/off printing
@@ -225,9 +209,9 @@ void solve(NonLinearProblemPtr_Type problem) {
     auto mpiComm = domainVec.at(0)->getComm();
     auto NonLinearSchwarzOp = Teuchos::rcp(
         new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(mpiComm, problem->getParameterList(), problem));
+    NonLinearSchwarzOp->initialize();
 
     // FROSch overlapping operator
-    // TODO KHo fill with dummy matrix and replace below
     auto dummyMat = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap());
     dummyMat->fillComplete();
     auto FROSchOverlappingOperator =
@@ -245,78 +229,42 @@ void solve(NonLinearProblemPtr_Type problem) {
 
     // Define convergence requirements
     double gmresIts = 0.;
-    double residual0 = 1.;
-    double residual = 1.;
     double outerTol = problem->getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6);
     int outerNonLinIts = 0;
     int maxOuterNonLinIts = problem->getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
-    auto relativeResidual = residual / residual0;
-    // TODO: KHo fetch from paremeter list
-    auto overlap = 2;
-
-    writeParameterListToXmlFile(*problem->getParameterList(), "debug_xml_file.xml");
-
-    // Fill solution with values corresponding to global index
-    /* for (int i = 0; i < problem->solution_->getBlock(0)->getLocalLength(); i++) { */
-    /*     problem->solution_->getBlockNonConst(0)->replaceLocalValue( */
-    /*         i, 0, problem->solution_->getBlock(0)->getMap()->getGlobalElement(i)); */
-    /* } */
-
-    /* logGreen("Increasing solution", mpiComm); */
-    /* problem->solution_->getBlock(0)->print(); */
 
     // Compute the residual
     problem->calculateNonLinResidualVec("reverse");
-    residual0 = problem->calculateResidualNorm();
-    residual = residual0;
-    relativeResidual = residual / residual0;
+    auto residual0 = problem->calculateResidualNorm();
+    auto residual = residual0;
+    auto relativeResidual = residual / residual0;
+
     // Outer Newton iterations
-    NonLinearSchwarzOp->initialize();
-    while (relativeResidual > outerTol && outerNonLinIts < 1) {
+    while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
         logGreen("Outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
         logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
-        // Compute current g
-        // Must call initialize here again to avoid overwriting maps etc of problem
+
         // TODO: KHo for ASPEN the Schwarz Op should store the DF(u_i) and stitch them together and return them upon
         // request as a Thyra linear op
-        // TODO: KHo probably can call initialize() only once since pointers are stored so value updates will also be
-        // stored.
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
-        /* problem->solution_->putScalar(0.); */
         NonLinearSchwarzOp->apply(problem->getSolution(), g);
 
-        // TODO: KHo need to incorporate the boundary conditions here in some further manner? Possibly also in the
-        // Schwarz operator below?
-        // TODO: KHo assembleFEElements_ needs to be different for global assembly and local assembly.
-        // Problem->feFactory_->assembleFEElements_
-
-        // Compute DF(u) (ASPIN)
         logGreen("Building ASPIN tangent with FROSch", mpiComm);
         problem->assemble("Newton");
         problem->setBoundariesSystem();
 
         // Compute D\mathcal{F}(u) using FROSch and DF(u)
         auto jacobian = problem->getSystem()->getBlock(0, 0)->getXpetraMatrix();
-        /* logGreen("Jacobian", mpiComm); */
-        /* problem->getSystem()->getBlock(0, 0)->print(); */
         FROSchOverlappingOperator->resetMatrix(jacobian);
+        // Be default FROSch extends the subdomains via the dual graph. The overlapping subdomains generated by FROSch
+        // should thus be the same as those generated by the nonlinear Schwarz operator
         FROSchOverlappingOperator->initialize(overlap);
         FROSchOverlappingOperator->compute();
-
-        /* const auto out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
-        /* auto testVec = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(g->getBlock(0)->getMapXpetra(), 1); */
-        /* FROSchOverlappingOperator->apply(*g->getBlock(0)->getXpetraMultiVector(), *testVec, true); */
-        /* logGreen("g", mpiComm); */
-        /* g->print(); */
-        /* logGreen("A*g", mpiComm); */
-        /* testVec->describe(*out, Teuchos::VERB_EXTREME); */
-        /* return; */
 
         // Convert SchwarzOperator to Thyra::LinearOpBase
         auto XpetraFROSchOverlappingOperator =
             rcp_dynamic_cast<Xpetra::Operator<SC, LO, GO, NO>>(FROSchOverlappingOperator);
 
-        // TODO: KHo is the overlap being used by the FROSch operator the same?
         RCP<FROSch::TpetraPreconditioner<SC, LO, GO, NO>> TpetraFROSchOverlappingOperator(
             new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(XpetraFROSchOverlappingOperator));
 
@@ -332,10 +280,7 @@ void solve(NonLinearProblemPtr_Type problem) {
         // Update the current solution
         // solution = alpha * deltaSolution + beta * solution
         problem->solution_->update(ST::one(), deltaSolution, ST::one());
-        logGreen("Update @ iteration " + std::to_string(outerNonLinIts), mpiComm);
-        g->getBlock(0)->print();
 
-        /* problem->solution_->update(ST::one(), g, ST::zero()); */
         // Compute the residual
         problem->calculateNonLinResidualVec("reverse");
         residual = problem->calculateResidualNorm();

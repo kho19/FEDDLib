@@ -120,14 +120,14 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
   private:
     void replaceMapAndExportProblem();
 
-    // TODO: KHo when finished, check each variable to see if still needed
-
     // FEDDLib problem object. (will need to be changed for interoperability)
     NonLinearProblemPtrFEDD problem_;
     // Current point of evaluation. Null if none has been passed
     BlockMultiVectorPtrFEDD x_;
     // Current output. Null if no valid output stored.
     BlockMultiVectorPtrFEDD y_;
+  // Local (serial) overlapping map object
+    ConstXMapPtr mapOverlappingLocal_;
 
     // Newtons method params
     double newtonTol_;
@@ -141,9 +141,6 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
     ConstXMapPtr mapRepeatedMpiTmp_;
     ConstXMapPtr mapUniqueMpiTmp_;
-    ConstXMapPtr elementMapMpiTmp_;
-    ConstXMapPtr elementMapOverlappingMpiTmp_;
-    ConstXMapPtr mapOverlappingMpiTmp_;
     // Vectors for saving repeated and unique points
     FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
     FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;

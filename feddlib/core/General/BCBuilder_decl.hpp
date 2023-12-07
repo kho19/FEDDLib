@@ -207,11 +207,19 @@ public:
     /// @param block 
     /// @return 
     int dofsPerNodeAtBlock(int block);
-        
-//    DomainPtr_Type domainOfBlock(int block) const;
-    
-private:
-    
+
+    //    DomainPtr_Type domainOfBlock(int block) const;
+
+    //***************** Nonlinear Schwarz related functions ***************
+    /// @brief Sets an entry in vecExternalSol_ as specified by the index. The user is responsible for ensuring that the
+    /// dimension of externalSol is correct
+    /// @param index: where to insert the external solution
+    /// @param externalSol: multivector holding the external solution
+    /// @return none
+    void setVecExternalSolAtIndex(int index, MultiVectorConstPtr_Type externalSol) const;
+    vec_int_Type getVecFlag() const;
+
+  private:
     std::vector<BC_func_Type> vecBC_func_;
     vec_int_Type vecFlag_;
     vec_int_Type vecBlockID_;
@@ -219,7 +227,7 @@ private:
     std::vector<std::string> vecBCType_;
     vec_int_Type vecDofs_;
     vec2D_dbl_Type vecBC_Parameters_;
-    std::vector<MultiVectorConstPtr_Type> vecExternalSol_;
+    mutable std::vector<MultiVectorConstPtr_Type> vecExternalSol_;
     mutable vec_dbl_ptr_Type resultPtr_;
     mutable vec_dbl_ptr_Type pointPtr_;
 #ifdef BCBuilder_TIMER

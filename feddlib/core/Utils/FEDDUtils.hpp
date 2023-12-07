@@ -260,14 +260,12 @@ inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Com
     if (comm->getRank() == 0) {
             std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
     }
-    comm->barrier();
 }
 
 inline void logSimple(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
             std::cout << "==> " << s << '\n';
     }
-    comm->barrier();
 }
 
 }

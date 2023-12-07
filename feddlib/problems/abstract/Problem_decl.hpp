@@ -223,6 +223,7 @@ public:
     vec_dbl_Type parasSourceFunc_; //
 
     FEFacPtr_Type feFactory_;
+    mutable BCConstPtr_Type         bcFactory_;
     
 protected:
 
@@ -230,7 +231,6 @@ protected:
     mutable DomainConstPtr_vec_Type domainPtr_vec_;
     string_vec_Type                 domain_FEType_vec_;
     string_vec_Type                 variableName_vec_;
-    mutable BCConstPtr_Type         bcFactory_;
 
     std::vector<int> dofsPerNode_vec_;
     

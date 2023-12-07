@@ -1,4 +1,5 @@
 <ParameterList name="solver">
+  <Parameter name="Overlap" type="int" value="2" />
   <ParameterList name="ThyraSolver">
     <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
     <ParameterList name="Linear Solver Types">
@@ -36,33 +37,5 @@
     <Parameter name="Max Iterations" type="int" value="50" />
     <Parameter name="Criterion" type="string" value="Residual" />
     <Parameter name="Recombination Mode" type="string" value="Restricted" />
-  </ParameterList>
-  <ParameterList name="NOXSolver">
-    <Parameter name="Nonlinear Solver" type="string" value="Line Search Based" />
-    <ParameterList name="Direction">
-      <ParameterList name="Newton">
-        <Parameter name="Forcing Term Method" type="string" value="Constant" /> <!-- Constant, Type
-        1, Type 2-->
-        <Parameter name="Forcing Term Minimum Tolerance" type="double" value="1.e-6" />
-        <Parameter name="Forcing Term Maximum Tolerance" type="double" value="0.001" />
-        <ParameterList name="Linear Solver">
-          <Parameter name="Tolerance" type="double" value="1e-6" />
-        </ParameterList>
-      </ParameterList>
-    </ParameterList>
-    <ParameterList name="Printing">
-      <ParameterList name="Output Information">
-        <Parameter name="Debug" type="bool" value="true" />
-        <Parameter name="Warning" type="bool" value="true" />
-        <Parameter name="Error" type="bool" value="true" />
-        <Parameter name="Test Details" type="bool" value="true" />
-        <Parameter name="Details" type="bool" value="true" />
-        <Parameter name="Parameters" type="bool" value="true" />
-        <Parameter name="Linear Solver Details" type="bool" value="true" />
-        <Parameter name="Inner Iteration" type="bool" value="true" />
-        <Parameter name="Outer Iteration" type="bool" value="true" />
-        <Parameter name="Outer Iteration StatusTest" type="bool" value="true" />
-      </ParameterList>
-    </ParameterList>
   </ParameterList>
 </ParameterList>

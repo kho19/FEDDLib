@@ -253,7 +253,7 @@ void NonLinLaplace<SC, LO, GO, NO>::calculateNonLinResidualVec(std::string type,
         this->residualVec_->update(-1., *this->rhs_, 1.);
         this->bcFactory_->setVectorMinusBC(this->residualVec_, this->solution_, time);
     } else if (!type.compare("reverse")) {
-        // rhs_ may contain the rhs of the equation. The nonlienar Laplace example is implemented so that the rhs is
+        // rhs_ may contain the rhs of the equation. The nonlinear Laplace example is implemented so that the rhs is
         // built into the residual evaluation
         // this = -1*this + 1*rhs
         this->residualVec_->update(1., *this->rhs_, -1.);
