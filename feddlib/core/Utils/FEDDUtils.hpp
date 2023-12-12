@@ -6,6 +6,7 @@
 #include <Xpetra_Map.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <fstream>
+#include <vector>
 
 
 #ifndef FEDD_TIMER_START
@@ -268,5 +269,14 @@ inline void logSimple(const std::string &s, const Teuchos::RCP<const Teuchos::Co
     }
 }
 
+template <typename T> void logVec(const std::vector<T> vec, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
+    if (comm->getRank() == 0) {
+        std::cout << "[ ";
+        for (auto it = vec.begin(); it != vec.end() - 1; it++) {
+            std::cout << *it << ", ";
+        }
+        std::cout << vec.back() << "]" << std::endl;
+    }
+}
 }
 #endif

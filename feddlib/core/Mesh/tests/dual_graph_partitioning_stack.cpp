@@ -2,6 +2,7 @@
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <Teuchos_ArrayViewDecl.hpp>
 #include <Teuchos_Assert.hpp>
 #include <Teuchos_GlobalMPISession.hpp>
@@ -26,7 +27,7 @@ int main(int argc, char *argv[]) {
     Teuchos::oblackholestream blackhole;
     Teuchos::GlobalMPISession mpiSession(&argc, &argv, &blackhole);
 
-    Teuchos::RCP<const Teuchos::Comm<int>> comm = Xpetra::DefaultPlatform::getDefaultPlatform().getComm();
+    auto comm = Xpetra::DefaultPlatform::getDefaultPlatform().getComm();
     const auto myRank = comm->getRank();
     int dim = 2;
 
@@ -58,37 +59,29 @@ int main(int argc, char *argv[]) {
     partitioner.buildSubdomainFEsAndNodeLists(0);
 
     auto elementMap = domain->getElementMap();
-    auto elementMapOverlapping = domain->getElementMapOverlapping();
     auto mapRepeated = domain->getMapRepeated();
     auto mapOverlapping = domain->getMapOverlapping();
     auto elementsC = domain->getElementsC();
 
     auto elementMapVecIs = createVector(elementMap->getNodeElementList());
-    std::vector<GO> elementMapVec{4, 5};
+    std::vector<GO> elementMapVec{0, 1};
     if (myRank == 0) {
         TEUCHOS_ASSERT(elementMapVecIs == elementMapVec);
     }
 
-    auto elementMapOverlappingVecIs = createVector(elementMapOverlapping->getNodeElementList());
-    std::vector<GO> elementMapOverlappingVec{1, 4, 5, 7};
-    if (myRank == 0) {
-        TEUCHOS_ASSERT(elementMapOverlappingVecIs == elementMapOverlappingVec);
-    }
-
     auto mapRepeatedVecIs = createVector(mapRepeated->getNodeElementList());
-    std::vector<GO> mapRepeatedVec{3, 4, 6, 7};
+    std::vector<GO> mapRepeatedVec{0, 1, 3, 4};
     if (myRank == 0) {
         TEUCHOS_ASSERT(mapRepeatedVecIs == mapRepeatedVec);
     }
     auto mapOverlappingVecIs = createVector(mapOverlapping->getNodeElementList());
-    std::vector<GO> mapOverlappingVec{0, 3, 4, 6, 7, 8};
+    std::vector<GO> mapOverlappingVec{0, 1, 2, 3, 4, 5, 6, 7, 8};
     if (myRank == 0) {
         TEUCHOS_ASSERT(mapOverlappingVecIs == mapOverlappingVec);
     }
 
-    mapOverlapping->print();
     auto elementsNodeListIs = elementsC->getElementsNodeList();
-    vec2D_LO_Type elementsNodeList{{0, 2, 1}, {1, 2, 4}, {1, 3, 4}, {2, 4, 5}};
+    vec2D_LO_Type elementsNodeList{{0, 1, 3}, {0, 3, 2}};
     if (myRank == 0) {
         TEUCHOS_ASSERT(elementsNodeListIs == elementsNodeList);
     }

@@ -1260,7 +1260,6 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
 
     // Store the interior of the subdomain to differentiate the border
     auto extendedElementMap = FROSch::SortMapByGlobalIndex(graphExtended->getRowMap());
-    meshUnstr->elementMapOverlappingInterior_.reset(new Map(extendedElementMap));
 
     // Build graph with sorted map
     newDualGraph =
@@ -1286,7 +1285,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     const auto dim = meshUnstr->getDimension();
     const auto FEType = domains_.at(meshNumber)->getFEType();
     const auto elementMap = meshUnstr->getElementMap();
-    const auto elementMapOverlappingInterior = meshUnstr->getElementMapOverlappingInterior();
+    const auto elementMapOverlappingInterior = meshUnstr->dualGraph_->getRowMap();
     const int indexBase = 0;
     vec_int_Type elementsOverlappingIndices(0);
 
@@ -1313,8 +1312,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
             pointsRepIndices.push_back(eindVec.at(j)); // Ids of element nodes, globalIDs
         }
     }
-    // Do the same for elementMapOverlappingInterior_
-    for (auto i = 0; i < elementMapOverlappingInterior->getNodeNumElements(); i++) {
+    // Do the same for elementMapOverlappingInterior
+    for (auto i = 0; i < elementMapOverlappingInterior->getLocalNumElements(); i++) {
         // Get the global index of i
         auto globalID = elementMapOverlappingInterior->getGlobalElement(i);
         // Start filling indices of overlapping elements
@@ -1327,7 +1326,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
 
     // make_unique also sorts in ascending order
     make_unique(pointsRepIndices);
-    /* make_unique(pointsOverlappingIndices); */
     make_unique(pointsOverlappingInteriorIndices);
 
     // Extend by an extra layer, sometimes denoted "ghost layer"
@@ -1467,11 +1465,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     // ==================== Build repeated (elementsC_) and overlapping elements ====================
     meshUnstr->elementsOverlapping_.reset(new Elements(FEType, dim));
     meshUnstr->elementsC_.reset(new Elements(FEType, dim));
-
-    /* logGreen("mapOverlappingInterior_", comm_); */
-    /* meshUnstr->mapOverlappingInterior_->print(); */
-    /* logGreen("mapRepeated_", comm_); */
-    /* meshUnstr->mapRepeated_->print(); */
 
     for (auto i = 0; i < elementsOverlappingIndices.size(); i++) {
         // Build local element and save

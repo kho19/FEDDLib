@@ -25,8 +25,8 @@ Mesh<SC, LO, GO, NO>::Mesh()
       bcFlagRep_(), bcFlagUni_(), surfaceElements_(new Elements()), elementsC_(new Elements()), elementMap_(new Map()),
       edgeMap_(new Map()), comm_(), elementsVec_(), pointsRepRef_(), pointsUniRef_(), mapUniqueP2Map_(),
       mapRepeatedP2Map_(), elementOrder_(-1), surfaceElementOrder_(-1), edgesElementOrder_(-1), AABBTree_(),
-      rankRange_(-1, -1), dualGraph_(), elementMapOverlapping_(), mapOverlapping_(), elementMapOverlappingInterior_(),
-      pointsOverlapping_(), bcFlagOverlapping_(), elementsOverlapping_(new Elements()) {}
+      rankRange_(-1, -1), dualGraph_(), mapOverlapping_(), pointsOverlapping_(), bcFlagOverlapping_(),
+      elementsOverlapping_(new Elements()) {}
 
 template <class SC, class LO, class GO, class NO>
 Mesh<SC, LO, GO, NO>::Mesh(CommConstPtrConst_Type &comm)
@@ -34,8 +34,8 @@ Mesh<SC, LO, GO, NO>::Mesh(CommConstPtrConst_Type &comm)
       bcFlagRep_(), bcFlagUni_(), surfaceElements_(new Elements()), elementsC_(new Elements()), elementMap_(new Map()),
       edgeMap_(new Map()), comm_(comm), elementsVec_(), pointsRepRef_(), pointsUniRef_(), mapUniqueP2Map_(),
       mapRepeatedP2Map_(), elementOrder_(-1), surfaceElementOrder_(-1), edgesElementOrder_(-1), AABBTree_(),
-      rankRange_(-1, -1), dualGraph_(), elementMapOverlapping_(), mapOverlapping_(), elementMapOverlappingInterior_(),
-      pointsOverlapping_(), bcFlagOverlapping_(), elementsOverlapping_(new Elements()) {}
+      rankRange_(-1, -1), dualGraph_(), mapOverlapping_(), pointsOverlapping_(), bcFlagOverlapping_(),
+      elementsOverlapping_(new Elements()) {}
 
 template <class SC, class LO, class GO, class NO> Mesh<SC, LO, GO, NO>::~Mesh() {}
 
@@ -536,20 +536,6 @@ void Mesh<SC,LO,GO,NO>::flipSurface(FiniteElement_Type feSub){
 
 }
 // ################# Nonlinear Schwarz related functions ##################
-template <class SC, class LO, class GO, class NO>
-typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMapOverlapping() const {
-    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlapping_.is_null(), std::runtime_error,
-                               "Overlapping element map of mesh does not exist.");
-    return elementMapOverlapping_;
-}
-
-template <class SC, class LO, class GO, class NO>
-typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getElementMapOverlappingInterior() const {
-    TEUCHOS_TEST_FOR_EXCEPTION(elementMapOverlappingInterior_.is_null(), std::runtime_error,
-                               "Interior overlapping element map of mesh does not exist.");
-    return elementMapOverlappingInterior_;
-}
-
 template <class SC, class LO, class GO, class NO>
 typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() const {
     TEUCHOS_TEST_FOR_EXCEPTION(mapOverlapping_.is_null(), std::runtime_error,

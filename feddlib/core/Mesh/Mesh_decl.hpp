@@ -144,8 +144,6 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     vec2D_int_ptr_Type getElements();
 
     // ##################### Nonlinear Schwarz related functions ###############
-    MapConstPtr_Type getElementMapOverlapping() const;
-    MapConstPtr_Type getElementMapOverlappingInterior() const;
     MapConstPtr_Type getMapOverlapping() const;
     MapConstPtr_Type getMapOverlappingInterior() const;
     ElementsPtr_Type getElementsOverlapping() const;
@@ -202,18 +200,15 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     tuple_intint_Type rankRange_;
 
     // ######################## Nonlinear Schwarz related member variables
-    // dualGraph_ does not need its own map since its row map = elementMapOverlapping_
+    // dual graph of the interior (excluding ghost layer) of the overlapping subdomain
     GraphPtr_Type dualGraph_;
-    // Overlapping subdomain elements
-    MapPtr_Type elementMapOverlapping_;
-    // Only interior elements of the subdomain
-    MapPtr_Type elementMapOverlappingInterior_;
     // Overlapping partition of nodes for nonlinear Schwarz method
     MapPtr_Type mapOverlapping_;
     // Only interior nodes of the subdomain
     MapPtr_Type mapOverlappingInterior_;
     // List of points in the overlapping subdomain
     vec2D_dbl_ptr_Type pointsOverlapping_;
+    // BC flags corresponding to pointsOverlapping_
     vec_int_ptr_Type bcFlagOverlapping_;
     // Elements in overlapping subdomain
     ElementsPtr_Type elementsOverlapping_;
