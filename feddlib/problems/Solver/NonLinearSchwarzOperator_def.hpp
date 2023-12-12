@@ -41,9 +41,8 @@ template <class SC, class LO, class GO, class NO>
 NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList,
                                                                    NonLinearProblemPtrFEDD problem)
     : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem}, newtonTol_{}, maxNumIts_{}, criterion_{""},
-      recombinationMode_{RecombinationMode::Add}, mapRepeatedMpiTmp_{}, mapUniqueMpiTmp_{},
-      pointsRepTmp_{}, pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{},
-      elementsCTmp_{} {
+      recombinationMode_{RecombinationMode::Add}, mapRepeatedMpiTmp_{}, mapUniqueMpiTmp_{}, pointsRepTmp_{},
+      pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -183,7 +182,6 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
     // Solve local nonlinear problems
     bool verbose = problem_->getVerbose();
-    double gmresIts = 0.;
     double residual0 = 1.;
     double residual = 1.;
     int nlIts = 0;
@@ -228,7 +226,7 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         // Set solution_ to g_i
         problem_->solution_->update(-ST::one(), *x_, ST::one());
 
-        gmresIts += problem_->solveAndUpdate(criterion_, criterionValue);
+        problem_->solveAndUpdate(criterion_, criterionValue);
         nlIts++;
         if (criterion_ == "Update") {
             FEDD::logGreen("Inner Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
@@ -250,10 +248,7 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     /* if (this->MpiComm_->getRank() != 0) */
     /*     problem_->solution_->putScalar(0.); */
 
-    gmresIts /= nlIts;
-    FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts) +
-                       " with average gmres iters: " + std::to_string(gmresIts),
-                   this->MpiComm_);
+    FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
         TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNumIts_, std::runtime_error,
                                    "Maximum nonlinear Iterations reached. Problem might have converged in the last "

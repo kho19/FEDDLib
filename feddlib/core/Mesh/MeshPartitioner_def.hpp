@@ -12,6 +12,7 @@
 #include <Teuchos_RCPBoostSharedPtrConversionsDecl.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_TestForException.hpp>
+#include <Teuchos_VerboseObject.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Teuchos_dyn_cast.hpp>
 #include <Teuchos_implicit_cast.hpp>
@@ -21,6 +22,7 @@
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_CrsGraphFactory.hpp>
 #include <Xpetra_ExportFactory.hpp>
+#include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MapFactory_decl.hpp>
 #include <Xpetra_Map_def.hpp>
 #include <Xpetra_TpetraCrsGraph_decl.hpp>
@@ -1109,7 +1111,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildDualGraph(const int meshNumber) {
 template <class SC, class LO, class GO, class NO>
 void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int meshNumber, const int overlap) {
 
-    Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::VerboseObjectBase::getDefaultOStream();
+    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
     typedef Teuchos::OrdinalTraits<GO> OTGO;
 #ifdef UNDERLYING_LIB_TPETRA
     const string underlyingLib = "Tpetra";
@@ -1268,13 +1270,6 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     newDualGraph->fillComplete(graphExtended->getDomainMap(), graphExtended->getRangeMap());
 
     meshUnstr->dualGraph_ = newDualGraph;
-
-    /* logGreen("Dual Graph after extending, after sorting:\n", comm_); */
-    /* meshUnstr->dualGraph_->describe(*out, Teuchos::VERB_EXTREME); */
-    /*     logGreen("Element map in partitionDualGraphWithOverlap()\n"); , comm_*/
-    /* meshUnstr->elementMap_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
-    /*     logGreen("Element map overlapping in partitionDualGraphWithOverlap()\n"); , comm_*/
-    /* meshUnstr->elementMapOverlapping_->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
 }
 
 template <class SC, class LO, class GO, class NO>
@@ -1293,6 +1288,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     const auto elementMap = meshUnstr->getElementMap();
     const auto elementMapOverlappingInterior = meshUnstr->getElementMapOverlappingInterior();
     const int indexBase = 0;
+    vec_int_Type elementsOverlappingIndices(0);
 
     // Build index vectors for the elements which can then be used to build the elements in the current subdomain.
     vec_idx_Type eptrVec(0); // Vector for local elements ptr (local is still global at this point)
@@ -1321,6 +1317,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     for (auto i = 0; i < elementMapOverlappingInterior->getNodeNumElements(); i++) {
         // Get the global index of i
         auto globalID = elementMapOverlappingInterior->getGlobalElement(i);
+        // Start filling indices of overlapping elements
+        elementsOverlappingIndices.push_back(globalID);
         // For each element add the indices corresponding to that element
         for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
             pointsOverlappingInteriorIndices.push_back(eindVec.at(j));
@@ -1333,27 +1331,70 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     make_unique(pointsOverlappingInteriorIndices);
 
     // Extend by an extra layer, sometimes denoted "ghost layer"
-    // This is required to facilitate local assembly of a Dirichlet problem. Zero Dirichlet boundary conditions are
-    // prescribed on the ghost layer while solving. This is equivalent to assembling the Neumann matrix on the subdomain
-    // including ghost layer and subsequently extracting the submatrix corresponding to interior nodes for solving
+    // This is required to facilitate local assembly of a Dirichlet problem. The current global solution is prescribed
+    // as a Dirichlet boundary condition on the ghost layer while solving. This is equivalent to assembling the Neumann
+    // matrix on the subdomain including ghost layer and subsequently extracting the submatrix corresponding to interior
+    // nodes for solving.
+    // This is implemented here and not in partitionDualGraphWithOverlap() since the subdomain points list is required
+    // which is not built in the latter.
 
-    vec_GO_Type pointsOverlappingIndices(0);
-    vec_int_Type elementsOverlappingIndices(0);
-    // Mark all elements that have node in overlappingInterior. Remove all elements already in overlappingInterior
-    for (auto i = 0; i < meshUnstr->elementsC_->numberElements(); i++) {
-        // At this stage elementsC_ still contains all elements i.e. it is not partitioned yet
-        auto elementNodes = meshUnstr->elementsC_->getElement(i).getVectorNodeList();
-        auto allNodesAreExterior = true;
-        for (auto j = 0; j < elementNodes.size(); j++) {
-            // Since pointsOverlappingInteriorIndices is sorted, can use binary search
-            auto indexInSubdomain = std::binary_search(pointsOverlappingInteriorIndices.begin(),
-                                                       pointsOverlappingInteriorIndices.end(), elementNodes.at(j));
-            allNodesAreExterior = allNodesAreExterior && !indexInSubdomain;
+    vec_GO_Type pointsOverlappingIndices(pointsOverlappingInteriorIndices);
+
+    // Mark all elements that have node in overlappingInterior.
+    auto graphImporter = Xpetra::ImportFactory<LO, GO, NO>::Build(meshUnstr->dualGraph_->getRowMap(),
+                                                                  meshUnstr->dualGraph_->getRowMap());
+    // Build a copy of dualGraph_ here. Using an importer that imports to the same map is the simplest way to do this
+    auto ghostDualGraphOld = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(meshUnstr->dualGraph_, *graphImporter));
+    auto ghostDualGraphNew = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(meshUnstr->dualGraph_->getRowMap()));
+
+    int globalNumElementsAddedToGhosts = 1;
+    bool ghostLayerComplete = false;
+    while (globalNumElementsAddedToGhosts != 0) {
+        // TODO: generate list of only those elements added. Iterate over that list and count how many elements are in
+        // centre for stopping criterion
+        ExtendOverlapByOneLayer(ghostDualGraphOld, ghostDualGraphNew);
+        int localNumElementsAddedToGhosts = 0;
+        if (!ghostLayerComplete) {
+            auto previousElements = Teuchos::createVector(ghostDualGraphOld->getRowMap()->getLocalElementList());
+            auto newElements = Teuchos::createVector(ghostDualGraphNew->getRowMap()->getLocalElementList());
+
+            std::sort(previousElements.begin(), previousElements.end());
+            std::sort(newElements.begin(), newElements.end());
+
+            std::vector<GO> addedElements(0);
+            // This requires sorted inputs and returns a sorted output
+            std::set_difference(newElements.begin(), newElements.end(), previousElements.begin(),
+                                previousElements.end(), std::back_inserter(addedElements));
+
+            for (const auto i : addedElements) {
+                // At this stage elementsC_ still contains all elements i.e. it is not partitioned yet
+                auto elementNodes = meshUnstr->elementsC_->getElement(i).getVectorNodeList();
+                auto allNodesAreExterior = true;
+                for (auto j = 0; j < elementNodes.size(); j++) {
+                    // Since pointsOverlappingInteriorIndices is sorted, can use binary search
+                    auto indexInSubdomain =
+                        std::binary_search(pointsOverlappingInteriorIndices.begin(),
+                                           pointsOverlappingInteriorIndices.end(), elementNodes.at(j));
+                    allNodesAreExterior = allNodesAreExterior && !indexInSubdomain;
+                }
+                if (!allNodesAreExterior) {
+                    pointsOverlappingIndices.insert(pointsOverlappingIndices.end(), elementNodes.begin(),
+                                                    elementNodes.end());
+                    elementsOverlappingIndices.push_back(i);
+                    localNumElementsAddedToGhosts++;
+                }
+            }
+            if (localNumElementsAddedToGhosts == 0) {
+                ghostLayerComplete = true;
+            }
+            auto tempDualGraph = ghostDualGraphOld;
+            ghostDualGraphOld = ghostDualGraphNew;
+            ghostDualGraphNew = tempDualGraph;
         }
-        if (!allNodesAreExterior) {
-            pointsOverlappingIndices.insert(pointsOverlappingIndices.end(), elementNodes.begin(), elementNodes.end());
-            elementsOverlappingIndices.push_back(i);
-        }
+        Teuchos::reduceAll(*comm_, Teuchos::REDUCE_SUM, 1, &localNumElementsAddedToGhosts,
+                           &globalNumElementsAddedToGhosts);
     }
     make_unique(pointsOverlappingIndices);
 
@@ -1457,12 +1498,6 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
             meshUnstr->elementsC_->addElement(feC);
         }
     }
-    /*     logGreen("elementMap\n"); , comm_*/
-    /* meshUnstr->elementMap_->print(); */
-    /*     logGreen("elementMapOverlapping\n"); , comm_*/
-    /* meshUnstr->elementMapOverlapping_->print(); */
-    /*     logGreen("elementsC_\n"); , comm_*/
-    /* meshUnstr->elementsC_->print(); */
 }
 
 } // namespace FEDD
