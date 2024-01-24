@@ -1,4 +1,5 @@
 <ParameterList name="solver">
+  <Parameter name="SolverType" type="string" value="ASPEN" />
   <Parameter name="Overlap" type="int" value="2" />
   <ParameterList name="ThyraSolver">
     <Parameter name="Linear Solver Type" type="string" value="Amesos2" />

@@ -59,37 +59,37 @@ class NonLinLaplace : public NonLinearProblem<SC, LO, GO, NO> {
     //@}
     ~NonLinLaplace();
 
-    virtual void info();
+    void info() override;
 
-    virtual void assemble(std::string type = "") const;
+    void assemble(std::string type = "") const override;
 
     void initAssemble() const;
 
     void reAssemble(std::string type) const;
 
-    virtual void reAssemble(BlockMultiVectorPtr_Type previousSolution) const {};
+    void reAssemble(BlockMultiVectorPtr_Type previousSolution) const override{};
 
     virtual void reAssemble(MatrixPtr_Type &massmatrix, std::string type) const {};
 
-    virtual void reAssembleExtrapolation(BlockMultiVectorPtrArray_Type previousSolutions);
+    void reAssembleExtrapolation(BlockMultiVectorPtrArray_Type previousSolutions) override;
 
-    virtual void calculateNonLinResidualVec(std::string type, double time = 0.) const;
+    void calculateNonLinResidualVec(std::string type, double time = 0.) const override;
 
-    virtual void getValuesOfInterest(vec_dbl_Type &values){};
+    void getValuesOfInterest(vec_dbl_Type &values) override{};
 
-    virtual void computeValuesOfInterestAndExport(){};
+    void computeValuesOfInterestAndExport() override{};
 
     //    virtual void assembleExternal( std::string type ){};
 
-    Teuchos::RCP<Thyra::LinearOpBase<SC>> create_W_op() const;
+    Teuchos::RCP<Thyra::LinearOpBase<SC>> create_W_op() const override;
 
-    Teuchos::RCP<Thyra::PreconditionerBase<SC>> create_W_prec() const;
+    Teuchos::RCP<Thyra::PreconditionerBase<SC>> create_W_prec() const override;
 
     void reInitSpecificProblemVectors(const MapConstPtr_Type newMap) override;
 
   private:
-    virtual void evalModelImpl(const ::Thyra::ModelEvaluatorBase::InArgs<SC> &inArgs,
-                               const ::Thyra::ModelEvaluatorBase::OutArgs<SC> &outArgs) const;
+    void evalModelImpl(const ::Thyra::ModelEvaluatorBase::InArgs<SC> &inArgs,
+                               const ::Thyra::ModelEvaluatorBase::OutArgs<SC> &outArgs) const override;
     mutable MultiVectorPtr_Type u_rep_;
 };
 } // namespace FEDD

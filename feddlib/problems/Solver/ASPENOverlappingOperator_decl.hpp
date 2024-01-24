@@ -1,5 +1,5 @@
-#ifndef NONLINEARSCHWARZOPERATOR_DECL_HPP
-#define NONLINEARSCHWARZOPERATOR_DECL_HPP
+#ifndef ASPENOVERLAPPINGOPERATOR_DECL_HPP
+#define ASPENOVERLAPPINGOPERATOR_DECL_HPP
 
 #include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/FEDDCore.hpp"
@@ -9,18 +9,22 @@
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/Mesh/Mesh_decl.hpp"
 #include "feddlib/problems/abstract/NonLinearProblem_decl.hpp"
+#include <FROSch_OverlappingOperator_decl.hpp>
 #include <FROSch_SchwarzOperator_def.hpp>
 #include <Teuchos_Describable.hpp>
 #include <Teuchos_FancyOStream.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_ScalarTraitsDecl.hpp>
+#include <Teuchos_TestForException.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
+#include <stdexcept>
 
 /*!
- Declaration of NonLinearSchwarzOperator
+ Declaration of ASPENOverlappingOperator
 
- @brief Implements the surrogate problem $\mathcal{F}(u)$ from the nonlinear Schwarz approach
+ @brief Implements the ASPEN tangent $D\mathcal{F}(u) = \sum P_i(R_iDF(u_i)P_i)^{-1}R_iDF(u_i)$ from the nonlinear
+ Schwarz approach
  @author Kyrill Ho
  @version 1.0
  @copyright KH
@@ -28,11 +32,8 @@
 
 namespace FROSch {
 
-// TODO: these should be moved into the nonlinear Schwarz solver once created
-enum class RecombinationMode { Add, Average, Restricted };
-
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
-class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
+class ASPENOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
 
   protected:
     using CommPtr = typename SchwarzOperator<SC, LO, GO, NO>::CommPtr;
@@ -97,72 +98,37 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
-    NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm, ParameterListPtr parameterList,
-                             NonLinearProblemPtrFEDD problem);
+    ASPENOverlappingOperator(ConstXMatrixPtr k, ParameterListPtr parameterList);
 
-    ~NonLinearSchwarzOperator() = default;
+    ~ASPENOverlappingOperator() = default;
 
-
-    int initialize() {
-        initialize(0);
-        return 0;
+    int initialize() override {
+        TEUCHOS_TEST_FOR_EXCEPTION(
+            true, std::runtime_error,
+            "ASPENOverlappingOperator requires local Jacobians, local and global maps and serial "
+            "and mpi comms during initialization");
     };
-    int initialize(int overlap);
+    int initialize(CommPtr serialComm, ConstXMatrixPtr localJacobian, ConstXMapPtr overlappingMap);
 
-    int compute();
+    int compute() override;
 
-    void apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y, SC alpha = ScalarTraits<SC>::one(),
-               SC beta = ScalarTraits<SC>::zero());
+    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
 
-    // This apply method must be overridden but does not make sense in the context of nonlinear operators
-    void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
-               SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const;
+    string description() const override;
 
-    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const;
-
-    string description() const;
-
-    BlockMatrixPtrFEDD getLocalJacobian() const;
+  protected:
+    // Do nothing op in this case since the local overlapping matrices are already known
+    int updateLocalOverlappingMatrices() override { return 0; }
 
   private:
-    void replaceMapAndExportProblem();
-
-    // FEDDLib problem object. (will need to be changed for interoperability)
-    NonLinearProblemPtrFEDD problem_;
-    // Current point of evaluation. Null if none has been passed
-    BlockMultiVectorPtrFEDD x_;
-    // Current output. Null if no valid output stored.
-    BlockMultiVectorPtrFEDD y_;
-    // Tangent of the nonlinear Schwarz operator as used in ASPEN
-    BlockMatrixPtrFEDD localJacobian_;
+    // Tangent of the nonlinear Schwarz operator as used in ASPEN is saved in this->localSubdomainMatrix_
     // Local (serial) overlapping map object
-    ConstXMapPtr mapOverlappingLocal_;
-
-    // Newtons method params
-    double newtonTol_;
-    int maxNumIts_;
-    std::string criterion_;
+    /* ConstXMapPtr mapOverlappingLocal_; */
+    /* ConstXMapPtr mapOverlappingGlobal_; */
 
     // Recombination mode. [Restricted, Averaging, Addition]
-    RecombinationMode recombinationMode_;
-    BlockMultiVectorPtrFEDD multiplicity_;
-
-    // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
-    ConstXMapPtr mapRepeatedMpiTmp_;
-    ConstXMapPtr mapUniqueMpiTmp_;
-    // Vectors for saving repeated and unique points
-    FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
-    FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
-    // Vectors for saving the boundary conditios
-    FEDD::vec_int_ptr_Type bcFlagRepTmp_;
-    FEDD::vec_int_ptr_Type bcFlagUniTmp_;
-    // Vector of elements for saving elementsC_
-    Teuchos::RCP<FEDD::Elements> elementsCTmp_;
-    // Current global solution of the problem
-    BlockMultiVectorPtrFEDD solutionTmp_;
-    // FE assembly factory for global and local assembly
-    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
-    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryLocal_;
+    /* RecombinationMode recombinationMode_; */
+    /* BlockMultiVectorPtrFEDD multiplicity_; */
 };
 
 } // namespace FROSch

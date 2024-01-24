@@ -5,10 +5,12 @@
 #include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMatrix_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
+#include "feddlib/core/LinearAlgebra/Matrix_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <Tacho_Driver.hpp>
 #include <Teuchos_BLAS_types.hpp>
+#include <Teuchos_OrdinalTraits.hpp>
 #include <Teuchos_ParameterList.hpp>
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_ScalarTraitsDecl.hpp>
@@ -38,7 +40,8 @@
 
 namespace FROSch {
 template <class SC, class LO, class GO, class NO>
-NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiComm, ParameterListPtr parameterList,
+NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm,
+                                                                   ParameterListPtr parameterList,
                                                                    NonLinearProblemPtrFEDD problem)
     : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem}, newtonTol_{}, maxNumIts_{}, criterion_{""},
       recombinationMode_{RecombinationMode::Add}, mapRepeatedMpiTmp_{}, mapUniqueMpiTmp_{}, pointsRepTmp_{},
@@ -51,20 +54,27 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
         TEUCHOS_ASSERT(!domainPtr->getMapRepeated().is_null());
         TEUCHOS_ASSERT(!domainPtr->getDualGraph().is_null());
     }
+
+    // Assigning parent class protected members is not good practice, but is done here to avoid modifying FROSch code
     this->ParameterList_ = parameterList;
+    this->SerialComm_ = serialComm;
 
     // Initialize members that cannot be null after construction
     x_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
     x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(), 1)), 0);
     y_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    localJacobian_.reset(new FEDD::BlockMatrix<SC, LO, GO, NO>(1));
+    // Max. num. entries per row unkown at this stage
+    localJacobian_->addBlock(
+        Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(),
+                                                      domainPtr_vec.at(0)->getApproxEntriesPerRow())),
+        0, 0);
+    /* localJacobian_->addBlock(Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>()), 0, 0); */
     multiplicity_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
     feFactoryTmp_.reset(new FEDD::FE<SC, LO, GO, NO>());
     feFactoryLocal_.reset(new FEDD::FE<SC, LO, GO, NO>());
-    feFactoryLocal_->addFE(problem->getDomainVector().at(0));
+    feFactoryLocal_->addFE(domainPtr_vec.at(0));
 }
-
-template <class SC, class LO, class GO, class NO>
-NonLinearSchwarzOperator<SC, LO, GO, NO>::~NonLinearSchwarzOperator() {}
 
 // NOTE: KHo increase overlap of the dual graph by the specified number of layers. Not doing this here for now since
 // MeshPartitioner already does.
@@ -237,6 +247,14 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         }
     }
 
+    // The currently assembled Jacobian is from the previous Newton iteration. The error this causes is negligable.
+    // Worth it since a reassemble is avoided.
+
+  // Assigning like this does not copy accross the map pointer and results in a non-fillComplete matrix
+    /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
+    /* localJacobian_ = problem_->system_; */
+    localJacobian_->addBlock(problem_->system_->getBlock(0, 0), 0, 0);
+
     // Set solution on ghost points to zero
     for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
         if (mesh->bcFlagOverlapping_->at(i) == -99) {
@@ -322,6 +340,11 @@ template <class SC, class LO, class GO, class NO> string NonLinearSchwarzOperato
     return "Nonlinear Schwarz Operator";
 }
 
+template <class SC, class LO, class GO, class NO>
+Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>> NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobian() const {
+    return localJacobian_;
+}
+
 // NOTE: KHo if FROSch_OverlappingOperator is modified this functionality could be shared
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
@@ -332,6 +355,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     auto mapUnique = domainPtr_vec.at(0)->getMapUnique();
     auto mapOverlapping = domainPtr_vec.at(0)->getMapOverlapping();
     auto overlappingY = problem_->solution_->getBlockNonConst(0);
+
     // For testing difference between add and insert
     /* if (this->MpiComm_->getRank() == 0) { */
     /*     overlappingY->putScalar(1.); */
@@ -349,6 +373,14 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     if (recombinationMode_ == RecombinationMode::Restricted) {
         GO globID = 0;
         LO localID = 0;
+        //  MultiVector insert mode does not add any entries i.e. only one entry from a rank is taken
+        //  Export in Forward mode: the rank which is chosen to give value seems random
+        //  Export in reverse mode: the rank which is chosen is the owning rank
+        //  Import in Forward mode: like Export in reverse mode
+        //  Import in Reverse mode: like Export in forward mode
+        //  Conclusion: using an Importer results in a correct distribution. Probably because order in which mapping is
+        //  done happens to be correct. Probably cannot be relied on.
+        /* uniqueY->importFromVector(overlappingY, true, "Insert", "Forward"); */
         for (auto i = 0; i < uniqueY->getNumVectors(); i++) {
             auto overlappingYData = overlappingY->getData(i);
             for (auto j = 0; j < mapUnique->getNodeNumElements(); j++) {
@@ -357,14 +389,6 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
                 uniqueY->getDataNonConst(i)[j] = overlappingYData[localID];
             }
         }
-        // MultiVector insert mode does not add any entries i.e. only one entry from a rank is taken
-        // Export in Forward mode: the rank which is chosen to give value seems random
-        // Export in reverse mode: the rank which is chosen is the owning rank
-        // Import in Forward mode: like Export in reverse mode
-        // Import in Reverse mode: like Export in forward mode
-        // Conclusion: using an Importer results in a correct distribution. Probably because order in which mapping is
-        // done happens to be correct. Probably cannot be relied on.
-        /* uniqueY->importFromVector(overlappingY, true, "Insert", "Forward"); */
     } else {
         // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
         // Use Insert since newSolution does not contain any values yet
