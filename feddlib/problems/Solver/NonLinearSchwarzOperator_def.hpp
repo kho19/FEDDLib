@@ -43,9 +43,16 @@ template <class SC, class LO, class GO, class NO>
 NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm,
                                                                    ParameterListPtr parameterList,
                                                                    NonLinearProblemPtrFEDD problem)
-    : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem}, newtonTol_{}, maxNumIts_{}, criterion_{""},
-      recombinationMode_{RecombinationMode::Add}, mapRepeatedMpiTmp_{}, mapUniqueMpiTmp_{}, pointsRepTmp_{},
-      pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{} {
+    : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem},
+      x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      localJacobian_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, mapOverlappingLocal_{}, newtonTol_{},
+      maxNumIts_{}, criterion_{""}, combinationMode_{CombinationMode::Full},
+      multiplicity_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, mapRepeatedMpiTmp_{},
+      mapUniqueMpiTmp_{}, pointsRepTmp_{}, pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{},
+      solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      feFactoryTmp_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
+      feFactoryLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -60,19 +67,12 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
     this->SerialComm_ = serialComm;
 
     // Initialize members that cannot be null after construction
-    x_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
     x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(), 1)), 0);
-    y_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
-    localJacobian_.reset(new FEDD::BlockMatrix<SC, LO, GO, NO>(1));
     // Max. num. entries per row unkown at this stage
     localJacobian_->addBlock(
         Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(),
                                                       domainPtr_vec.at(0)->getApproxEntriesPerRow())),
         0, 0);
-    /* localJacobian_->addBlock(Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>()), 0, 0); */
-    multiplicity_.reset(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
-    feFactoryTmp_.reset(new FEDD::FE<SC, LO, GO, NO>());
-    feFactoryLocal_.reset(new FEDD::FE<SC, LO, GO, NO>());
     feFactoryLocal_->addFE(domainPtr_vec.at(0));
 }
 
@@ -89,20 +89,20 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
-    auto recombinationModeTemp =
-        problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Recombination Mode", "Addition");
+    auto combineModeTemp =
+        problem_->getParameterList()->get("Combine Mode", "Addition");
 
-    if (recombinationModeTemp == "Add") {
-        recombinationMode_ = RecombinationMode::Add;
-    } else if (recombinationModeTemp == "Average") {
-        recombinationMode_ = RecombinationMode::Average;
-    } else if (recombinationModeTemp == "Restricted") {
-        recombinationMode_ = RecombinationMode::Restricted;
+    if (combineModeTemp == "Averaging") {
+        combinationMode_ = CombinationMode::Averaging;
+    } else if (combineModeTemp == "Full") {
+        combinationMode_ = CombinationMode::Full;
+    } else if (combineModeTemp == "Restricted") {
+        combinationMode_ = CombinationMode::Restricted;
     } else {
         if (this->MpiComm_->getRank() == 0) {
             std::cout << "\nInvalid Recombination Mode. Defaulting to Addition" << std::endl;
         }
-        recombinationMode_ = RecombinationMode::Add;
+        combinationMode_ = CombinationMode::Full;
     }
 
     // Store all distributed properties that need replacing for local computations
@@ -121,7 +121,7 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
         mesh->getMapOverlapping()->getXpetraMap()->getLocalNumElements(), 0, this->SerialComm_);
 
     // Compute overlap multiplicity
-    if (recombinationMode_ == RecombinationMode::Average) {
+    if (combinationMode_ == CombinationMode::Averaging) {
         auto multiplicityUnique = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapUnique(), 1));
 
         auto multiplicityRepeated =
@@ -249,11 +249,9 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
     // The currently assembled Jacobian is from the previous Newton iteration. The error this causes is negligable.
     // Worth it since a reassemble is avoided.
-
-  // Assigning like this does not copy accross the map pointer and results in a non-fillComplete matrix
-    /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
-    /* localJacobian_ = problem_->system_; */
     localJacobian_->addBlock(problem_->system_->getBlock(0, 0), 0, 0);
+    // Assigning like this does not copy across the map pointer and results in a non-fillComplete matrix
+    /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
 
     // Set solution on ghost points to zero
     for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
@@ -327,13 +325,13 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly,
                                                      ETransp mode, SC alpha, SC beta) const {
-    TEUCHOS_TEST_FOR_EXCEPTION(false, std::runtime_error,
+    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
                                "This version of apply does not make sense in the context of nonlinear operators.");
 }
 
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::describe(FancyOStream &out, const EVerbosityLevel verbLevel) const {
-    TEUCHOS_TEST_FOR_EXCEPTION(false, std::runtime_error, "describe() has to be implemented properly...");
+    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "describe() has to be implemented properly...");
 }
 
 template <class SC, class LO, class GO, class NO> string NonLinearSchwarzOperator<SC, LO, GO, NO>::description() const {
@@ -370,7 +368,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     overlappingY->replaceMap(mapOverlapping);
 
     auto uniqueY = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
-    if (recombinationMode_ == RecombinationMode::Restricted) {
+    if (combinationMode_ == CombinationMode::Restricted) {
         GO globID = 0;
         LO localID = 0;
         //  MultiVector insert mode does not add any entries i.e. only one entry from a rank is taken
@@ -394,7 +392,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
         // Use Insert since newSolution does not contain any values yet
         uniqueY->exportFromVector(overlappingY, true, "Add", "Forward");
     }
-    if (recombinationMode_ == RecombinationMode::Average) {
+    if (combinationMode_ == CombinationMode::Averaging) {
 
         auto scaling = multiplicity_->getBlock(0)->getData(0);
         for (auto j = 0; j < uniqueY->getNumVectors(); j++) {

@@ -29,7 +29,7 @@
 namespace FROSch {
 
 // TODO: these should be moved into the nonlinear Schwarz solver once created
-enum class RecombinationMode { Add, Average, Restricted };
+enum class CombinationMode { Averaging, Full, Restricted };
 
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
 class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
@@ -97,7 +97,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
-    NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm, ParameterListPtr parameterList,
+    explicit NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm, ParameterListPtr parameterList,
                              NonLinearProblemPtrFEDD problem);
 
     ~NonLinearSchwarzOperator() = default;
@@ -144,7 +144,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     std::string criterion_;
 
     // Recombination mode. [Restricted, Averaging, Addition]
-    RecombinationMode recombinationMode_;
+    CombinationMode combinationMode_;
     BlockMultiVectorPtrFEDD multiplicity_;
 
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps

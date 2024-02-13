@@ -5,12 +5,13 @@
 #include "feddlib/core/LinearAlgebra/MultiVector.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
-#include "feddlib/problems/Solver/ASPENOverlappingOperator.hpp"
-#include "feddlib/problems/Solver/ASPENOverlappingOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzOperator.hpp"
+#include "feddlib/problems/Solver/SimpleOverlappingOperator.hpp"
+#include "feddlib/problems/Solver/SimpleOverlappingOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
 #include <FROSch_AlgebraicOverlappingOperator_decl.hpp>
 #include <FROSch_OverlappingOperator_decl.hpp>
+#include <Teuchos_ArrayViewDecl.hpp>
 #include <Teuchos_DefaultSerialComm.hpp>
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Teuchos_RCPDecl.hpp>
@@ -19,8 +20,10 @@
 #include <Thyra_LinearOpBase_decl.hpp>
 #include <Thyra_TpetraThyraWrappers_decl.hpp>
 #include <Tpetra_Operator.hpp>
+#include <Xpetra_ConfigDefs.hpp>
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
+#include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <stdexcept>
@@ -85,7 +88,7 @@ typedef Teuchos::ScalarTraits<SC> ST;
 
 using namespace NonLinearSchwarz;
 
-enum class SolverType { ASPIN, ASPEN };
+enum class NonlinSchwarzVariant { ASPIN, ASPEN };
 void solve(NonLinearProblemPtr_Type problem, int overlap = 2);
 int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp, MultiVectorPtr_Type x,
                     MultiVectorConstPtr_Type b, ParameterListPtr_Type parameterList, bool verbose = true);
@@ -206,8 +209,6 @@ int main(int argc, char *argv[]) {
 void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     logGreen("Commencing nonlinear Schwarz solve", problem->getComm());
-    // NOTE: KHo turn on/off printing
-    /* problem->verbose_ = false; */
     // Define nonlinear Schwarz operator
     auto domainVec = problem->getDomainVector();
     auto mpiComm = domainVec.at(0)->getComm();
@@ -216,12 +217,12 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         mpiComm, serialComm, problem->getParameterList(), problem));
     nonLinearSchwarzOp->initialize();
 
-    auto solverTypeString = problem->getParameterList()->get("SolverType", "ASPEN");
-    SolverType solverType;
-    if (solverTypeString == "ASPEN") {
-        solverType = SolverType::ASPEN;
-    } else if (solverTypeString == "ASPIN") {
-        solverType = SolverType::ASPIN;
+    auto variantString = problem->getParameterList()->get("Nonlin Schwarz Variant", "ASPEN");
+    NonlinSchwarzVariant variant;
+    if (variantString == "ASPEN") {
+        variant = NonlinSchwarzVariant::ASPEN;
+    } else if (variantString == "ASPIN") {
+        variant = NonlinSchwarzVariant::ASPIN;
     } else {
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "Invalid nonlinear Schwarz solver type");
     }
@@ -230,22 +231,22 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     Teuchos::RCP<FROSch::OverlappingOperator<SC, LO, GO, NO>> froschOverlappingOperator;
     auto dummyMat = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap());
     dummyMat->fillComplete();
-    if (solverType == SolverType::ASPEN) {
+    if (variant == NonlinSchwarzVariant::ASPEN) {
         froschOverlappingOperator =
-            Teuchos::rcp(new FROSch::ASPENOverlappingOperator<SC, LO, GO, NO>(dummyMat, problem->getParameterList()));
+            Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(dummyMat, problem->getParameterList()));
 
-    } else if (solverType == SolverType::ASPIN) {
+    } else if (variant == NonlinSchwarzVariant::ASPIN) {
         froschOverlappingOperator = Teuchos::rcp(
             new FROSch::AlgebraicOverlappingOperator<SC, LO, GO, NO>(dummyMat, problem->getParameterList()));
     }
     // Init block vectors for nonlinear residual and outer Newton update
-    auto g = Teuchos::rcp(new BlockMultiVector_Type(1));
     auto gBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
     gBlock->putScalar(0.);
+    auto g = Teuchos::rcp(new BlockMultiVector_Type(1));
     g->addBlock(gBlock, 0);
-    auto deltaSolution = Teuchos::rcp(new BlockMultiVector_Type(1));
     auto deltaSolutionBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
     deltaSolutionBlock->putScalar(0.);
+    auto deltaSolution = Teuchos::rcp(new BlockMultiVector_Type(1));
     deltaSolution->addBlock(deltaSolutionBlock, 0);
 
     // Define convergence requirements
@@ -269,17 +270,65 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         // request as a Thyra linear op
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         nonLinearSchwarzOp->apply(problem->getSolution(), g);
-        if (solverType == SolverType::ASPEN) {
+
+        problem->assemble();
+        auto tempMat = problem->system_->getBlock(0, 0)->getXpetraMatrix();
+        auto globalJacobian = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
+            domainVec.at(0)->getMapOverlapping()->getXpetraMap(), tempMat->getGlobalMaxNumRowEntries());
+        auto importer = Xpetra::ImportFactory<LO, GO>::Build(tempMat->getMap(),
+                                                             domainVec.at(0)->getMapOverlapping()->getXpetraMap());
+        globalJacobian->doImport(*tempMat, *importer, Xpetra::CombineMode::INSERT);
+        globalJacobian->fillComplete();
+        auto globalOverlappingColMap = globalJacobian->getColMap();
+
+        // ############# Test code ###############
+        auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
+        auto localJacobian = nonLinearSchwarzOp->getLocalJacobian()->getBlock(0, 0)->getXpetraMatrix();
+        // Compare local indices on rank 0
+        /* if (mpiComm->getRank() == 0) { */
+        /*     Teuchos::ArrayView<const LO> localIndices; */
+        /*     Teuchos::ArrayView<const SC> localValues; */
+        /*     Teuchos::ArrayView<const LO> globalIndices; */
+        /*     Teuchos::ArrayView<const SC> globalValues; */
+        /*     localJacobian->getLocalRowView(3, localIndices, localValues); */
+        /*     globalJacobian->getLocalRowView(3, globalIndices, globalValues); */
+        /* std::cout << "localJacobian indices:" << std::endl; */
+        /* std::cout << localIndices.toString() << std::endl; */
+        /* std::cout << "globalJacobian indices:" << std::endl; */
+        /* std::cout << globalIndices.toString() << std::endl; */
+        /*     std::cout << "\n\nlocalJacobian rank 0:" << std::endl; */
+        /*     localJacobian->describe(*out, Teuchos::VERB_EXTREME); */
+        /* } */
+        /* if (mpiComm->getRank() == 1) { */
+        /*     std::cout << "\n\nlocalJacobian rank 1:" << std::endl; */
+        /*     localJacobian->describe(*out, Teuchos::VERB_EXTREME); */
+        /* } */
+        /* std::cout << "\n\nglobalJacobian:" << std::endl; */
+        /* tempMat->describe(*out, Teuchos::VERB_EXTREME); */
+        /* tempMat->getMap()->describe(*out, Teuchos::VERB_EXTREME); */
+        /* mpiComm->barrier(); */
+        /* mpiComm->barrier(); */
+        /* mpiComm->barrier(); */
+        /* logGreen("globalJacobian-", mpiComm); */
+        /* globalJacobian->describe(*out, Teuchos::VERB_EXTREME); */
+        /* std::cout << "\n\nMapOverlapping:" << std::endl; */
+        /* domainVec.at(0)->getMapOverlapping()->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
+        /* domainVec.at(0)->getMapOverlapping()->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
+        /* return; */
+        // #######################################
+        if (variant == NonlinSchwarzVariant::ASPEN) {
 
             logGreen("Building ASPEN tangent", mpiComm);
             auto localJacobian = nonLinearSchwarzOp->getLocalJacobian()->getBlock(0, 0)->getXpetraMatrix();
             auto aspenOverlappingOperator =
-                rcp_static_cast<FROSch::ASPENOverlappingOperator<SC, LO, GO, NO>>(froschOverlappingOperator);
-            aspenOverlappingOperator->initialize(serialComm, localJacobian,
-                                                 domainVec.at(0)->getMapOverlapping()->getXpetraMap());
+                rcp_static_cast<FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>>(froschOverlappingOperator);
+            aspenOverlappingOperator->initialize(
+                serialComm, localJacobian, domainVec.at(0)->getMesh()->getMapOverlapping()->getXpetraMap(),
+                globalOverlappingColMap, domainVec.at(0)->getMesh()->getMapOverlappingInterior()->getXpetraMap(),
+                domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap());
             aspenOverlappingOperator->compute();
 
-        } else if (solverType == SolverType::ASPIN) {
+        } else if (variant == NonlinSchwarzVariant::ASPIN) {
 
             logGreen("Building ASPIN tangent with FROSch", mpiComm);
             problem->assemble("Newton");
@@ -296,6 +345,9 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
             froschAlgebraicOverlappingOperator->initialize(overlap);
             froschAlgebraicOverlappingOperator->compute();
         }
+
+        /* const auto out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
+        /* froschOverlappingOperator->describe(*out, Teuchos::VERB_EXTREME); */
 
         // Convert SchwarzOperator to Thyra::LinearOpBase
         auto xpetraFROSchOverlappingOperator =
@@ -315,8 +367,12 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
                         problem->getParameterList());
         // Update the current solution
         // solution = alpha * deltaSolution + beta * solution
+        logGreen("Before update: ", mpiComm);
+        problem->solution_->print();
         problem->solution_->update(ST::one(), deltaSolution, ST::one());
-
+        logGreen("After update: ", mpiComm);
+        problem->solution_->print();
+        return;
         // Compute the residual
         problem->calculateNonLinResidualVec("reverse");
         residual = problem->calculateResidualNorm();

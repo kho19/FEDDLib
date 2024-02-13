@@ -1,6 +1,7 @@
 <ParameterList name="solver">
-  <Parameter name="SolverType" type="string" value="ASPEN" />
-  <Parameter name="Overlap" type="int" value="2" />
+  <Parameter name="Nonlin Schwarz Variant" type="string" value="ASPEN" />
+  <Parameter name="Overlap" type="int" value="0" />
+  <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
   <ParameterList name="ThyraSolver">
     <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
     <ParameterList name="Linear Solver Types">
@@ -37,6 +38,5 @@
     <Parameter name="Relative Tolerance" type="double" value="1.0e-5" />
     <Parameter name="Max Iterations" type="int" value="50" />
     <Parameter name="Criterion" type="string" value="Residual" />
-    <Parameter name="Recombination Mode" type="string" value="Restricted" />
   </ParameterList>
 </ParameterList>

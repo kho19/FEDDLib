@@ -1,7 +1,7 @@
 SET(Solver_HEADERS
-  Solver/ASPENOverlappingOperator.hpp
-  Solver/ASPENOverlappingOperator_decl.hpp
-  Solver/ASPENOverlappingOperator_def.hpp
+  Solver/SimpleOverlappingOperator.hpp
+  Solver/SimpleOverlappingOperator_decl.hpp
+  Solver/SimpleOverlappingOperator_def.hpp
     Solver/DAESolverInTime_decl.hpp
     Solver/DAESolverInTime_def.hpp
     Solver/DAESolverInTime.hpp
@@ -30,7 +30,7 @@ SET(Solver_HEADERS
 CACHE INTERNAL "")
 
 SET(Solver_SOURCES
-  Solver/ASPENOverlappingOperator.cpp
+  Solver/SimpleOverlappingOperator.cpp
 	Solver/DAESolverInTime.cpp
     Solver/LinearSolver.cpp
     Solver/NonLinearSchwarzOperator.cpp

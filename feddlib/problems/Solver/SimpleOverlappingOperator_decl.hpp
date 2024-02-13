@@ -1,5 +1,5 @@
-#ifndef ASPENOVERLAPPINGOPERATOR_DECL_HPP
-#define ASPENOVERLAPPINGOPERATOR_DECL_HPP
+#ifndef SimpleOVERLAPPINGOPERATOR_DECL_HPP
+#define SimpleOVERLAPPINGOPERATOR_DECL_HPP
 
 #include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/FEDDCore.hpp"
@@ -33,7 +33,7 @@
 namespace FROSch {
 
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
-class ASPENOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
+class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
 
   protected:
     using CommPtr = typename SchwarzOperator<SC, LO, GO, NO>::CommPtr;
@@ -98,19 +98,32 @@ class ASPENOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
-    ASPENOverlappingOperator(ConstXMatrixPtr k, ParameterListPtr parameterList);
+    SimpleOverlappingOperator(ConstXMatrixPtr k, ParameterListPtr parameterList);
 
-    ~ASPENOverlappingOperator() = default;
+    ~SimpleOverlappingOperator() = default;
 
     int initialize() override {
         TEUCHOS_TEST_FOR_EXCEPTION(
             true, std::runtime_error,
-            "ASPENOverlappingOperator requires local Jacobians, local and global maps and serial "
+            "SimpleOverlappingOperator requires local Jacobians, local and global maps and serial "
             "and mpi comms during initialization");
     };
-    int initialize(CommPtr serialComm, ConstXMatrixPtr localJacobian, ConstXMapPtr overlappingMap);
+    int initialize(CommPtr serialComm, ConstXMatrixPtr localJacobian, ConstXMapPtr overlappingWithGhostsMap,
+                   ConstXMapPtr overlappingColMap, ConstXMapPtr overlappingMap, ConstXMapPtr uniqueMap);
+
+    // TODO: implement this initialize overload for when localOverlappingMatrix has been built by nonlinearSchwarz op
+    int initialize(CommPtr serialComm, ConstXMatrixPtr localJacobian, ConstXMapPtr overlappingWithGhostsMap);
 
     int compute() override;
+
+    void apply(const XMultiVector &x, XMultiVector &y, ETransp mode = NO_TRANS, SC alpha = ScalarTraits<SC>::one(),
+               SC beta = ScalarTraits<SC>::zero()) const override;
+
+    void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
+               SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const override {
+        TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
+                                   "This version of apply is not implemented for the simple overlapping operator");
+    };
 
     void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
 
@@ -121,10 +134,15 @@ class ASPENOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     int updateLocalOverlappingMatrices() override { return 0; }
 
   private:
-    // Tangent of the nonlinear Schwarz operator as used in ASPEN is saved in this->localSubdomainMatrix_
-    // Local (serial) overlapping map object
-    /* ConstXMapPtr mapOverlappingLocal_; */
-    /* ConstXMapPtr mapOverlappingGlobal_; */
+    void buildOverlappingMatrices(ConstXMatrixPtr localInputMatrix);
+
+    // Tangent of the nonlinear Schwarz operator is saved in this->OverlappingMatrix_ which lives on
+    // serial version of OverlappingMap_
+    XMatrixPtr overlappingWithGhostsMatrix_;
+    // Distributed map of the overlapping subdomains including ghost points
+    ConstXMapPtr overlappingWithGhostsMap_;
+    ConstXMapPtr overlappingColMap_;
+    ConstXMapPtr uniqueMap_;
 
     // Recombination mode. [Restricted, Averaging, Addition]
     /* RecombinationMode recombinationMode_; */
