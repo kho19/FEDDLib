@@ -155,35 +155,43 @@ class MeshPartitioner {
     void setLocalSurfaceIndices(vec2D_int_Type &localSurfaceIndices, int surfaceElementOrder);
     /* ######################### Nonlinear Schwarz related methods ############################################# */
     /**
-    * \brief Reads mesh and stores it in the mesh_ property of the corresponding domain. Mesh exists on all
-    * ranks after a call to this function. Called with volume ID in order to set in case it is not equal to ten. Always
-    * make sure the volumeID corresponds to the highest given flag.
-    * This function combines the functionality of readAndPartition() and the first part of readAndPartitionMesh(). After it
-    * has been called the mesh data should be available on all ranks.
-    */
+     * \brief Reads mesh and stores it in the mesh_ property of the corresponding domain. Mesh exists on all
+     * ranks after a call to this function. Called with volume ID in order to set in case it is not equal to ten. Always
+     * make sure the volumeID corresponds to the highest given flag.
+     * This function combines the functionality of readAndPartition() and the first part of readAndPartitionMesh().
+     * After it has been called the mesh data should be available on all ranks.
+     */
     void readMesh(const int volumeID = 10);
 
     /**
-    * \brief Build dual graph of the mesh provided
-    * Essentialy a wrapper of the metis function METIS_MeshToDual()
-    * Note: CSR (compressed sparse row), CRS (compressed row storage), Yale format are all the same
-    */
+     * \brief Build dual graph of the mesh provided
+     * Essentialy a wrapper of the metis function METIS_MeshToDual()
+     * Note: CSR (compressed sparse row), CRS (compressed row storage), Yale format are all the same
+     */
     void buildDualGraph(const int meshNumber);
 
     /**
-    * \brief partitions a locally replicated dual graph using metis and adds the specified overlapping
-    * this->dualGraph_ must be initialised before calling partitionDualGraph()
-    * Rather than using METIS to partition the mesh directly, the dual graph is used for nonlinear Schwarz to make
-    * increasing the overlap and subsequent assembly easy. If the mesh was partitioned directly and the overlap increased
-    * node-wise, assembly would be more difficult since the elements corresponding to the local subdomain vertices would
-    * have to be determined.
-    */
+     * \brief partitions a locally replicated dual graph using metis and adds the specified overlapping
+     * this->dualGraph_ must be initialised before calling partitionDualGraph()
+     * Rather than using METIS to partition the mesh directly, the dual graph is used for nonlinear Schwarz to make
+     * increasing the overlap and subsequent assembly easy. If the mesh was partitioned directly and the overlap
+     * increased node-wise, assembly would be more difficult since the elements corresponding to the local subdomain
+     * vertices would have to be determined.
+     */
     void partitionDualGraphWithOverlap(const int meshNumber, const int overlap = 0);
-    
+
     /**
-     * \brief Fills the elementsC_ and the pointsRep_ member of a mesh corresponding to a (potentially overlapping) partition of the dual graph
+     * \brief Fills the elementsC_ and the pointsRep_ member of a mesh corresponding to a (potentially overlapping)
+     * partition of the dual graph
      */
     void buildSubdomainFEsAndNodeLists(const int meshNumber);
+
+    /**
+     * \brief Returns the indices corresponding to a complete layer of vertices around the domain described redundantly
+     * by indicesIn and dualGraph
+     */
+    void buildGhostLayer(vec_GO_Type &pointIndicesIn, vec_GO_Type &pointIndicesOut, vec_int_Type &elementIndicesIn,
+                         vec_int_Type &elementIndicesOut, GraphPtr_Type dualGraph, ElementsPtr_Type elementList);
 
   private:
     /*!

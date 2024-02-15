@@ -89,8 +89,7 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
-    auto combineModeTemp =
-        problem_->getParameterList()->get("Combine Mode", "Addition");
+    auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Addition");
 
     if (combineModeTemp == "Averaging") {
         combinationMode_ = CombinationMode::Averaging;
@@ -147,8 +146,8 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     //    1. comm_ to SerialComm_ in problem, domainVec, Mesh
     //    2. mapRepeated_ and mapUnique_ to mapOverlappingLocal_
     //    3. pointsRep to pointsOverlapping
-    //    4. bcFlagRep_ and bcFlagUni_ to bcFlagOverlapping_
-    //    5. elementsC_ to elementsOverlapping_
+    //    4. bcFlagRep_ and bcFlagUni_ to bcFlagOverlapping1xGhosts_
+    //    5. elementsC_ to elementsOverlapping1xGhosts_
     //    6. u_rep_ to u_overlapping_ in problemSpecific
     //    7. feFactory_ to feFactoryLocal_ in problem
     //  No destinction between unique and repeated needs to be made since assembly is only local here.
@@ -160,9 +159,11 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
     // 2., 3., 4. and 5. replace repeated and unique members
     auto tempFEDDMapOverlappingLocal = Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal_));
-    mesh->replaceRepeatedMembers(tempFEDDMapOverlappingLocal, mesh->pointsOverlapping_, mesh->bcFlagOverlapping_);
-    mesh->replaceUniqueMembers(tempFEDDMapOverlappingLocal, mesh->pointsOverlapping_, mesh->bcFlagOverlapping_);
-    mesh->setElementsC(mesh->elementsOverlapping_);
+    mesh->replaceRepeatedMembers(tempFEDDMapOverlappingLocal, mesh->pointsOverlapping1xGhosts_,
+                                 mesh->bcFlagOverlapping1xGhosts_);
+    mesh->replaceUniqueMembers(tempFEDDMapOverlappingLocal, mesh->pointsOverlapping1xGhosts_,
+                               mesh->bcFlagOverlapping1xGhosts_);
+    mesh->setElementsC(mesh->elementsOverlapping1xGhosts_);
 
     // Problems block vectors and matrices need to be reinitialized
     problem_->initializeProblem();
@@ -177,8 +178,8 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     // 1. The linear system solved in each Newton iteration will have a solution of zero at the ghost points
     // 2. This implies that residual is zero at the ghost points i.e. original solution is maintained
     auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(tempFEDDMapOverlappingLocal, 1));
-    for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
-        if (mesh->bcFlagOverlapping_->at(i) == -99) {
+    for (int i = 0; i < mesh->bcFlagOverlapping1xGhosts_->size(); i++) {
+        if (mesh->bcFlagOverlapping1xGhosts_->at(i) == -99) {
             tempMV->replaceLocalValue(static_cast<GO>(i), 0, x_->getBlock(0)->getData(0)[i]);
         }
     }
@@ -253,9 +254,11 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     // Assigning like this does not copy across the map pointer and results in a non-fillComplete matrix
     /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
 
+    // TODO: kho assemble the extendedLocalJacobian on the second ghost layer
+
     // Set solution on ghost points to zero
-    for (int i = 0; i < mesh->bcFlagOverlapping_->size(); i++) {
-        if (mesh->bcFlagOverlapping_->at(i) == -99) {
+    for (int i = 0; i < mesh->bcFlagOverlapping1xGhosts_->size(); i++) {
+        if (mesh->bcFlagOverlapping1xGhosts_->at(i) == -99) {
             problem_->solution_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, ST::zero());
         }
     }
@@ -265,6 +268,7 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     /*     problem_->solution_->putScalar(0.); */
 
     FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
+
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
         TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNumIts_, std::runtime_error,
                                    "Maximum nonlinear Iterations reached. Problem might have converged in the last "

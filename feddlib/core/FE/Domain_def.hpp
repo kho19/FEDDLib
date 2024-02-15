@@ -1050,9 +1050,9 @@ void Domain<SC, LO, GO, NO>::exportElementFlags(string name)
     
 // ################# Nonlinear Schwarz functions #################
 template <class SC, class LO, class GO, class NO>
-typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getMapOverlapping() const {
+typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getMapOverlapping1xGhosts() const {
 
-    return mesh_->getMapOverlapping();
+    return mesh_->getMapOverlapping1xGhosts();
 }
 
 template <class SC, class LO, class GO, class NO>

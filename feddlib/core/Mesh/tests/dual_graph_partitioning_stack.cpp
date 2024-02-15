@@ -60,9 +60,8 @@ int main(int argc, char *argv[]) {
 
     auto elementMap = domain->getElementMap();
     auto mapRepeated = domain->getMapRepeated();
-    auto mapOverlapping = domain->getMapOverlapping();
+    auto mapOverlapping1xGhosts = domain->getMapOverlapping1xGhosts();
     auto elementsC = domain->getElementsC();
-
     auto elementMapVecIs = createVector(elementMap->getNodeElementList());
     std::vector<GO> elementMapVec{0, 1};
     if (myRank == 0) {
@@ -74,7 +73,7 @@ int main(int argc, char *argv[]) {
     if (myRank == 0) {
         TEUCHOS_ASSERT(mapRepeatedVecIs == mapRepeatedVec);
     }
-    auto mapOverlappingVecIs = createVector(mapOverlapping->getNodeElementList());
+    auto mapOverlappingVecIs = createVector(mapOverlapping1xGhosts->getNodeElementList());
     std::vector<GO> mapOverlappingVec{0, 1, 2, 3, 4, 5, 6, 7, 8};
     if (myRank == 0) {
         TEUCHOS_ASSERT(mapOverlappingVecIs == mapOverlappingVec);

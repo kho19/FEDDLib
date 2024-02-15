@@ -547,7 +547,7 @@ public:
    
 
 // ################### Nonlinear Schwarz functions ######################
-MapConstPtr_Type getMapOverlapping() const;
+MapConstPtr_Type getMapOverlapping1xGhosts() const;
 
 GraphPtr_Type getDualGraph() const;
 

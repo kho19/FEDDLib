@@ -237,7 +237,7 @@ int ExtendOverlapByOneLayer(Teuchos::RCP<const Xpetra::CrsGraph<LO, GO, NO>> inp
         Xpetra::CrsGraphFactory<LO, GO, NO>::Build(inputGraph->getColMap(), inputGraph->getGlobalMaxNumRowEntries());
     Teuchos::RCP<Xpetra::Import<LO, GO, NO>> scatter =
         Xpetra::ImportFactory<LO, GO, NO>::Build(inputGraph->getRowMap(), inputGraph->getColMap());
-    tmpGraph->doImport(*inputGraph, *scatter, Xpetra::ADD);
+    tmpGraph->doImport(*inputGraph, *scatter, Xpetra::INSERT);
     tmpGraph->fillComplete(inputGraph->getDomainMap(), inputGraph->getRangeMap());
 
     outputGraph = tmpGraph.getConst();
@@ -259,6 +259,12 @@ template <typename T> void waitForGdbAttach() {
 
 inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
+            std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
+    }
+}
+
+inline void logGreenOnRank(const std::string &s, int rank, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
+    if (comm->getRank() == rank) {
             std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
     }
 }
