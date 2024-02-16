@@ -145,8 +145,10 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     // ##################### Nonlinear Schwarz related functions ###############
     MapConstPtr_Type getMapOverlapping1xGhosts() const;
+    MapConstPtr_Type getMapOverlapping2xGhosts() const;
     MapConstPtr_Type getMapOverlapping() const;
     ElementsPtr_Type getElementsOverlapping1xGhosts() const;
+    ElementsPtr_Type getElementsOverlapping2xGhosts() const;
 
     // Have to make these const and the maps mutable to fit to the const structure of problem <- domain <- mesh
     void setElementsC(ElementsPtr_Type newElements) const;

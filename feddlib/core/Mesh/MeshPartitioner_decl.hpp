@@ -190,8 +190,8 @@ class MeshPartitioner {
      * \brief Returns the indices corresponding to a complete layer of vertices around the domain described redundantly
      * by indicesIn and dualGraph
      */
-    void buildGhostLayer(vec_GO_Type &pointIndicesIn, vec_GO_Type &pointIndicesOut, vec_int_Type &elementIndicesIn,
-                         vec_int_Type &elementIndicesOut, GraphPtr_Type dualGraph, ElementsPtr_Type elementList);
+    void buildGhostLayer(vec_GO_Type &pointIndices, vec_int_Type &elementIndices,
+                         GraphPtr_Type dualGraph, ElementsPtr_Type elementList);
 
   private:
     /*!

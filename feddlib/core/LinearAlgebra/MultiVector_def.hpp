@@ -120,6 +120,12 @@ void MultiVector<SC,LO,GO,NO>::sumIntoGlobalValue (GO globalRow, UN vectorIndex,
 }
 
 template <class SC, class LO, class GO, class NO>
+void MultiVector<SC,LO,GO,NO>::sumIntoLocalValue (LO localRow, UN vectorIndex, const SC &value){
+    multiVector_->sumIntoLocalValue( localRow, vectorIndex, value );
+}
+
+
+template <class SC, class LO, class GO, class NO>
 LO MultiVector<SC,LO,GO,NO>::getLocalLength() const{
     return multiVector_->getLocalLength();
 }

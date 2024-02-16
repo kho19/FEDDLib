@@ -1314,7 +1314,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     for (auto i = 0; i < elementMapOverlapping->getLocalNumElements(); i++) {
         // Get the global index of i
         auto globalID = elementMapOverlapping->getGlobalElement(i);
-        // Start filling indices of overlapping elements
+        // Start filling indices of elements in overlapping region including ghosts
         elementsOverlapping1xGhostsIndices.push_back(globalID);
         // For each element add the indices corresponding to that element
         for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
@@ -1336,16 +1336,15 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
 
     vec_GO_Type pointsOverlapping1xGhostsIndices(pointsOverlappingIndices);
 
-    buildGhostLayer(pointsOverlappingIndices, pointsOverlapping1xGhostsIndices, elementsOverlapping1xGhostsIndices,
-                    elementsOverlapping1xGhostsIndices, meshUnstr->dualGraph_, meshUnstr->elementsC_);
+    buildGhostLayer(pointsOverlapping1xGhostsIndices, elementsOverlapping1xGhostsIndices, meshUnstr->dualGraph_,
+                    meshUnstr->elementsC_);
 
     // Extend by a second ghost layer. This is required to assemble the R_iDF(u_i) as global values are required on the
     // first ghost layer when applying R_iDF(u_i) to a global vector
     vec_GO_Type pointsOverlapping2xGhostsIndices(pointsOverlapping1xGhostsIndices);
-    vec_int_Type elementsOverlapping2xGhostsIndices(0);
+    vec_int_Type elementsOverlapping2xGhostsIndices(elementsOverlapping1xGhostsIndices);
 
-    buildGhostLayer(pointsOverlapping1xGhostsIndices, pointsOverlapping2xGhostsIndices,
-                    elementsOverlapping1xGhostsIndices, elementsOverlapping2xGhostsIndices, meshUnstr->dualGraph_,
+    buildGhostLayer(pointsOverlapping2xGhostsIndices, elementsOverlapping2xGhostsIndices, meshUnstr->dualGraph_,
                     meshUnstr->elementsC_);
 
     auto pointsRepIndicesView = Teuchos::arrayViewFromVector(pointsRepIndices);
@@ -1493,12 +1492,11 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
 // Dual graph can be smaller or equal to domain covered by pointIndicesIn/elementIndicesIn. A smaller dual graph will
 // result in extra calls to ExtendOverlapByOneLayer
 template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::buildGhostLayer(vec_GO_Type &pointIndicesIn, vec_GO_Type &pointIndicesOut,
-                                                      vec_int_Type &elementIndicesIn, vec_int_Type &elementIndicesOut,
+void MeshPartitioner<SC, LO, GO, NO>::buildGhostLayer(vec_GO_Type &pointIndices, vec_int_Type &elementIndices,
                                                       GraphPtr_Type dualGraph, ElementsPtr_Type elementList) {
 
-    // Init. elementIndicesOut
-    elementIndicesOut = vec_int_Type(elementIndicesIn);
+    // Store original points
+    vec_GO_Type interiorPointIndices(pointIndices);
     // Mark all elements that have node in overlappingInterior.
     auto graphImporter = Xpetra::ImportFactory<LO, GO, NO>::Build(dualGraph->getRowMap(), dualGraph->getRowMap());
     // Build a copy of dualGraph_ here. Using an importer that imports to the same map is the simplest way to do this
@@ -1531,13 +1529,13 @@ void MeshPartitioner<SC, LO, GO, NO>::buildGhostLayer(vec_GO_Type &pointIndicesI
                 auto allNodesAreExterior = true;
                 for (auto j = 0; j < elementNodes.size(); j++) {
                     // Since pointsOverlappingInteriorIndices is sorted, can use binary search
-                    auto indexInSubdomain =
-                        std::binary_search(pointIndicesIn.begin(), pointIndicesIn.end(), elementNodes.at(j));
+                    auto indexInSubdomain = std::binary_search(interiorPointIndices.begin(), interiorPointIndices.end(),
+                                                               elementNodes.at(j));
                     allNodesAreExterior = allNodesAreExterior && !indexInSubdomain;
                 }
                 if (!allNodesAreExterior) {
-                    pointIndicesOut.insert(pointIndicesOut.end(), elementNodes.begin(), elementNodes.end());
-                    elementIndicesOut.push_back(i);
+                    pointIndices.insert(pointIndices.end(), elementNodes.begin(), elementNodes.end());
+                    elementIndices.push_back(i);
                     localNumElementsAddedToGhosts++;
                 }
             }
@@ -1552,7 +1550,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildGhostLayer(vec_GO_Type &pointIndicesI
         Teuchos::reduceAll(*comm_, Teuchos::REDUCE_SUM, 1, &localNumElementsAddedToGhosts,
                            &globalNumElementsAddedToGhosts);
     }
-    make_unique(pointIndicesOut);
+    make_unique(pointIndices);
+    make_unique(elementIndices);
 }
 
 } // namespace FEDD

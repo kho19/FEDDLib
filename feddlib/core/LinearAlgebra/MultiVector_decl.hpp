@@ -98,6 +98,8 @@ public:
 
     void sumIntoGlobalValue (GO globalRow, UN vectorIndex, const SC &value);
 
+    void sumIntoLocalValue (LO localRow, UN vectorIndex, const SC &value);
+
     LO getLocalLength() const;
 
     Teuchos::ArrayRCP< const SC >  getData(UN i) const;

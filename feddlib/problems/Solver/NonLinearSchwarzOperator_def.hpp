@@ -46,13 +46,16 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
     : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem},
       x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      localJacobian_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, mapOverlappingLocal_{}, newtonTol_{},
-      maxNumIts_{}, criterion_{""}, combinationMode_{CombinationMode::Full},
+      localJacobian1xGhosts_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
+      localJacobian2xGhosts_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, mapOverlapping1xGhostsLocal_{},
+      mapOverlapping2xGhostsLocal_{}, newtonTol_{}, maxNumIts_{}, criterion_{""},
+      combinationMode_{CombinationMode::Full},
       multiplicity_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, mapRepeatedMpiTmp_{},
       mapUniqueMpiTmp_{}, pointsRepTmp_{}, pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{},
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       feFactoryTmp_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
-      feFactoryLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())} {
+      feFactory1xGhostsLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
+      feFactory2xGhostsLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -67,13 +70,20 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
     this->SerialComm_ = serialComm;
 
     // Initialize members that cannot be null after construction
-    x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(), 1)), 0);
+    x_->addBlock(
+        Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping1xGhosts(), 1)), 0);
     // Max. num. entries per row unkown at this stage
-    localJacobian_->addBlock(
-        Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping(),
+    localJacobian1xGhosts_->addBlock(
+        Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping1xGhosts(),
                                                       domainPtr_vec.at(0)->getApproxEntriesPerRow())),
         0, 0);
-    feFactoryLocal_->addFE(domainPtr_vec.at(0));
+    localJacobian2xGhosts_->addBlock(
+        Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlapping2xGhosts(),
+                                                      domainPtr_vec.at(0)->getApproxEntriesPerRow())),
+        0, 0);
+
+    feFactory1xGhostsLocal_->addFE(domainPtr_vec.at(0));
+    feFactory2xGhostsLocal_->addFE(domainPtr_vec.at(0));
 }
 
 // NOTE: KHo increase overlap of the dual graph by the specified number of layers. Not doing this here for now since
@@ -115,16 +125,19 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     solutionTmp_ = problem_->getSolution();
     feFactoryTmp_ = problem_->feFactory_;
 
-    mapOverlappingLocal_ = Xpetra::MapFactory<LO, GO, NO>::Build(
-        mesh->getMapOverlapping()->getXpetraMap()->lib(),
-        mesh->getMapOverlapping()->getXpetraMap()->getLocalNumElements(), 0, this->SerialComm_);
+    mapOverlapping1xGhostsLocal_ = Xpetra::MapFactory<LO, GO, NO>::Build(
+        mesh->getMapOverlapping1xGhosts()->getXpetraMap()->lib(),
+        mesh->getMapOverlapping1xGhosts()->getXpetraMap()->getLocalNumElements(), 0, this->SerialComm_);
+
+    mapOverlapping2xGhostsLocal_ = Xpetra::MapFactory<LO, GO, NO>::Build(
+        mesh->getMapOverlapping2xGhosts()->getXpetraMap()->lib(),
+        mesh->getMapOverlapping2xGhosts()->getXpetraMap()->getLocalNumElements(), 0, this->SerialComm_);
 
     // Compute overlap multiplicity
     if (combinationMode_ == CombinationMode::Averaging) {
         auto multiplicityUnique = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapUnique(), 1));
 
-        auto multiplicityRepeated =
-            Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapOverlappingInterior(), 1));
+        auto multiplicityRepeated = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mesh->getMapOverlapping(), 1));
         multiplicityRepeated->putScalar(ST::one());
         multiplicityUnique->exportFromVector(multiplicityRepeated, false, "Add", "Forward");
         multiplicity_->addBlock(multiplicityUnique, 0);
@@ -158,26 +171,26 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     mesh->comm_ = this->SerialComm_;
 
     // 2., 3., 4. and 5. replace repeated and unique members
-    auto tempFEDDMapOverlappingLocal = Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlappingLocal_));
-    mesh->replaceRepeatedMembers(tempFEDDMapOverlappingLocal, mesh->pointsOverlapping1xGhosts_,
+    auto FEDDMapOverlapping1xGhostsLocal = Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlapping1xGhostsLocal_));
+    mesh->replaceRepeatedMembers(FEDDMapOverlapping1xGhostsLocal, mesh->pointsOverlapping1xGhosts_,
                                  mesh->bcFlagOverlapping1xGhosts_);
-    mesh->replaceUniqueMembers(tempFEDDMapOverlappingLocal, mesh->pointsOverlapping1xGhosts_,
+    mesh->replaceUniqueMembers(FEDDMapOverlapping1xGhostsLocal, mesh->pointsOverlapping1xGhosts_,
                                mesh->bcFlagOverlapping1xGhosts_);
     mesh->setElementsC(mesh->elementsOverlapping1xGhosts_);
 
     // Problems block vectors and matrices need to be reinitialized
     problem_->initializeProblem();
     // Map of current input
-    x_->getBlockNonConst(0)->replaceMap(tempFEDDMapOverlappingLocal);
+    x_->getBlockNonConst(0)->replaceMap(FEDDMapOverlapping1xGhostsLocal);
     // 6. rebuild problem->u_rep_ to use overlapping map
-    problem_->reInitSpecificProblemVectors(tempFEDDMapOverlappingLocal);
-    // 7. feFactory
-    problem_->feFactory_ = feFactoryLocal_;
+    problem_->reInitSpecificProblemVectors(FEDDMapOverlapping1xGhostsLocal);
+    // 7. feFactory. Needs replacing because stores an AssembleFEFactoryObject
+    problem_->feFactory_ = feFactory1xGhostsLocal_;
 
     // Set Dirichlet BC on ghost points to current global solution. This ensures:
     // 1. The linear system solved in each Newton iteration will have a solution of zero at the ghost points
     // 2. This implies that residual is zero at the ghost points i.e. original solution is maintained
-    auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(tempFEDDMapOverlappingLocal, 1));
+    auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(FEDDMapOverlapping1xGhostsLocal, 1));
     for (int i = 0; i < mesh->bcFlagOverlapping1xGhosts_->size(); i++) {
         if (mesh->bcFlagOverlapping1xGhosts_->at(i) == -99) {
             tempMV->replaceLocalValue(static_cast<GO>(i), 0, x_->getBlock(0)->getData(0)[i]);
@@ -248,25 +261,6 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         }
     }
 
-    // The currently assembled Jacobian is from the previous Newton iteration. The error this causes is negligable.
-    // Worth it since a reassemble is avoided.
-    localJacobian_->addBlock(problem_->system_->getBlock(0, 0), 0, 0);
-    // Assigning like this does not copy across the map pointer and results in a non-fillComplete matrix
-    /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
-
-    // TODO: kho assemble the extendedLocalJacobian on the second ghost layer
-
-    // Set solution on ghost points to zero
-    for (int i = 0; i < mesh->bcFlagOverlapping1xGhosts_->size(); i++) {
-        if (mesh->bcFlagOverlapping1xGhosts_->at(i) == -99) {
-            problem_->solution_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, ST::zero());
-        }
-    }
-
-    // Set all solutions to zero except for rank 0 for testing
-    /* if (this->MpiComm_->getRank() != 0) */
-    /*     problem_->solution_->putScalar(0.); */
-
     FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
 
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
@@ -274,6 +268,77 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
                                    "Maximum nonlinear Iterations reached. Problem might have converged in the last "
                                    "step. Still we cancel here.");
     }
+    // Set solution on ghost points to zero to build \sum P_ig_i
+    for (int i = 0; i < mesh->bcFlagOverlapping1xGhosts_->size(); i++) {
+        if (mesh->bcFlagOverlapping1xGhosts_->at(i) == -99) {
+            problem_->solution_->getBlockNonConst(0)->replaceLocalValue(static_cast<GO>(i), 0, ST::zero());
+        }
+    }
+
+    // The currently assembled Jacobian is from the previous Newton iteration. The error this causes is negligable.
+    // Worth it since a reassemble is avoided.
+
+    localJacobian1xGhosts_->addBlock(problem_->system_->getBlock(0, 0), 0, 0);
+    // Assigning like this does not copy across the map pointer and results in a non-fillComplete matrix
+    /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
+
+    // Build the local Jacobian on the overlapping subdomain with two ghost layers
+    // Required for R_iDF(u_i)x with x a global vector
+    //
+    // Make current solution (u not u-g_i) global and communicate to mapOverlapping2xGhosts and make local again
+    x_->getBlockNonConst(0)->replaceMap(
+        Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mesh->getMapOverlapping1xGhosts()->getXpetraMap())));
+
+    auto solution2xGhosts = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+
+    solution2xGhosts->addBlock(
+        Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainVec.at(0)->getMapOverlapping2xGhosts(), 1)), 0);
+
+    solution2xGhosts->getBlockNonConst(0)->importFromVector(x_->getBlock(0), true, "Insert", "Forward");
+
+    solution2xGhosts->getBlockNonConst(0)->replaceMap(
+        Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlapping2xGhostsLocal_)));
+
+    // Subtract g_i
+    for (auto i = 0; i < mapOverlapping2xGhostsLocal_->getLocalNumElements(); i++) {
+        auto globalIndex = domainVec.at(0)->getMapOverlapping2xGhosts()->getGlobalElement(i);
+        auto localIndex = domainVec.at(0)->getMapOverlapping1xGhosts()->getLocalElement(globalIndex);
+        if (localIndex >= 0) {
+            auto g_iAtLocalIndex = problem_->solution_->getBlock(0)->getData(0)[localIndex];
+            solution2xGhosts->getBlockNonConst(0)->sumIntoLocalValue(i, 0, g_iAtLocalIndex);
+        }
+    }
+
+    // Save current solution for later
+    auto g_i = problem_->solution_;
+
+    // Reset system
+    auto FEDDMapOverlapping2xGhostsLocal = Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mapOverlapping2xGhostsLocal_));
+    problem_->initializeProblem();
+    problem_->reInitSpecificProblemVectors(FEDDMapOverlapping2xGhostsLocal);
+
+    // Replace repeated and unique members
+    problem_->solution_ = solution2xGhosts;
+    mesh->replaceRepeatedMembers(FEDDMapOverlapping2xGhostsLocal, mesh->pointsOverlapping2xGhosts_,
+                                 mesh->bcFlagOverlapping2xGhosts_);
+    mesh->replaceUniqueMembers(FEDDMapOverlapping2xGhostsLocal, mesh->pointsOverlapping2xGhosts_,
+                               mesh->bcFlagOverlapping2xGhosts_);
+    mesh->setElementsC(mesh->elementsOverlapping2xGhosts_);
+    problem_->feFactory_ = feFactory2xGhostsLocal_;
+
+   // Assemble the extendedLocalJacobian on the second ghost layer
+   problem_->assemble("Newton");
+    problem_->setBoundariesSystem();
+
+    localJacobian2xGhosts_->addBlock(problem_->system_->getBlock(0, 0), 0, 0);
+    // Restrict to overlap + 1xGhosts?
+
+    // Restore the local solution for recombination
+    problem_->solution_ = g_i;
+
+    // Set all solutions to zero except for rank 0 for testing
+    /* if (this->MpiComm_->getRank() != 0) */
+    /*     problem_->solution_->putScalar(0.); */
 
     // ================= Restore shared objects ===============================
     //    1. comm_ to MpiComm_ in problem, domainVec, Mesh
@@ -308,9 +373,6 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     // Restore feFactory_
     problem_->feFactory_ = feFactoryTmp_;
 
-    // Make x_ distributed again for next import operation in apply()
-    x_->getBlockNonConst(0)->replaceMap(
-        Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mesh->getMapOverlapping()->getXpetraMap())));
     return 0;
 }
 
@@ -343,8 +405,15 @@ template <class SC, class LO, class GO, class NO> string NonLinearSchwarzOperato
 }
 
 template <class SC, class LO, class GO, class NO>
-Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>> NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobian() const {
-    return localJacobian_;
+Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>>
+NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobian1xGhosts() const {
+    return localJacobian1xGhosts_;
+}
+
+template <class SC, class LO, class GO, class NO>
+Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>>
+NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobian2xGhosts() const {
+    return localJacobian2xGhosts_;
 }
 
 // NOTE: KHo if FROSch_OverlappingOperator is modified this functionality could be shared
@@ -355,7 +424,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
     // TODO: KHo make this work for block and vector-valued systems
     auto domainPtr_vec = problem_->getDomainVector();
     auto mapUnique = domainPtr_vec.at(0)->getMapUnique();
-    auto mapOverlapping = domainPtr_vec.at(0)->getMapOverlapping();
+    auto mapOverlapping = domainPtr_vec.at(0)->getMapOverlapping1xGhosts();
     auto overlappingY = problem_->solution_->getBlockNonConst(0);
 
     // For testing difference between add and insert

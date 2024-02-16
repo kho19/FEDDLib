@@ -263,13 +263,15 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     // Outer Newton iterations
     while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
-        logGreen("Outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
+        logGreen("Starting outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
         logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
 
         // TODO: KHo for ASPEN the Schwarz Op should store the DF(u_i) and stitch them together and return them upon
         // request as a Thyra linear op
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         nonLinearSchwarzOp->apply(problem->getSolution(), g);
+        /* if (outerNonLinIts > 2) */
+            return;
 
         problem->assemble();
         auto tempMat = problem->system_->getBlock(0, 0)->getXpetraMatrix();
@@ -281,50 +283,15 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         globalJacobian->fillComplete();
         auto globalOverlappingColMap = globalJacobian->getColMap();
 
-        // ############# Test code ###############
-        auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-        auto localJacobian = nonLinearSchwarzOp->getLocalJacobian()->getBlock(0, 0)->getXpetraMatrix();
-        // Compare local indices on rank 0
-        /* if (mpiComm->getRank() == 0) { */
-        /*     Teuchos::ArrayView<const LO> localIndices; */
-        /*     Teuchos::ArrayView<const SC> localValues; */
-        /*     Teuchos::ArrayView<const LO> globalIndices; */
-        /*     Teuchos::ArrayView<const SC> globalValues; */
-        /*     localJacobian->getLocalRowView(3, localIndices, localValues); */
-        /*     globalJacobian->getLocalRowView(3, globalIndices, globalValues); */
-        /* std::cout << "localJacobian indices:" << std::endl; */
-        /* std::cout << localIndices.toString() << std::endl; */
-        /* std::cout << "globalJacobian indices:" << std::endl; */
-        /* std::cout << globalIndices.toString() << std::endl; */
-        /*     std::cout << "\n\nlocalJacobian rank 0:" << std::endl; */
-        /*     localJacobian->describe(*out, Teuchos::VERB_EXTREME); */
-        /* } */
-        /* if (mpiComm->getRank() == 1) { */
-        /*     std::cout << "\n\nlocalJacobian rank 1:" << std::endl; */
-        /*     localJacobian->describe(*out, Teuchos::VERB_EXTREME); */
-        /* } */
-        /* std::cout << "\n\nglobalJacobian:" << std::endl; */
-        /* tempMat->describe(*out, Teuchos::VERB_EXTREME); */
-        /* tempMat->getMap()->describe(*out, Teuchos::VERB_EXTREME); */
-        /* mpiComm->barrier(); */
-        /* mpiComm->barrier(); */
-        /* mpiComm->barrier(); */
-        /* logGreen("globalJacobian-", mpiComm); */
-        /* globalJacobian->describe(*out, Teuchos::VERB_EXTREME); */
-        /* std::cout << "\n\nMapOverlapping:" << std::endl; */
-        /* domainVec.at(0)->getMapOverlapping()->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
-        /* domainVec.at(0)->getMapOverlapping()->getXpetraMap()->describe(*out, Teuchos::VERB_EXTREME); */
-        /* return; */
-        // #######################################
         if (variant == NonlinSchwarzVariant::ASPEN) {
 
             logGreen("Building ASPEN tangent", mpiComm);
-            auto localJacobian = nonLinearSchwarzOp->getLocalJacobian()->getBlock(0, 0)->getXpetraMatrix();
+            auto localJacobian = nonLinearSchwarzOp->getLocalJacobian1xGhosts()->getBlock(0, 0)->getXpetraMatrix();
             auto aspenOverlappingOperator =
                 rcp_static_cast<FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>>(froschOverlappingOperator);
             aspenOverlappingOperator->initialize(
-                serialComm, localJacobian, domainVec.at(0)->getMesh()->getMapOverlapping()->getXpetraMap(),
-                globalOverlappingColMap, domainVec.at(0)->getMesh()->getMapOverlappingInterior()->getXpetraMap(),
+                serialComm, localJacobian, domainVec.at(0)->getMesh()->getMapOverlapping1xGhosts()->getXpetraMap(),
+                globalOverlappingColMap, domainVec.at(0)->getMesh()->getMapOverlapping()->getXpetraMap(),
                 domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap());
             aspenOverlappingOperator->compute();
 
@@ -372,7 +339,6 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         problem->solution_->update(ST::one(), deltaSolution, ST::one());
         logGreen("After update: ", mpiComm);
         problem->solution_->print();
-        return;
         // Compute the residual
         problem->calculateNonLinResidualVec("reverse");
         residual = problem->calculateResidualNorm();
@@ -380,7 +346,9 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
         outerNonLinIts += 1;
     }
-    logGreen("Outer Newton iteration terminated with residual: " + std::to_string(relativeResidual), mpiComm);
+    logGreen("Outer Newton terminated", mpiComm);
+    logSimple("Iterations: " + std::to_string(outerNonLinIts), mpiComm);
+    logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
 }
 
 int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp, MultiVectorPtr_Type x,

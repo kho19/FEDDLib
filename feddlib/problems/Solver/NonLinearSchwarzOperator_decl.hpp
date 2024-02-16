@@ -122,7 +122,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     string description() const;
 
-    BlockMatrixPtrFEDD getLocalJacobian() const;
+    BlockMatrixPtrFEDD getLocalJacobian1xGhosts() const;
+    BlockMatrixPtrFEDD getLocalJacobian2xGhosts() const;
 
   private:
     void replaceMapAndExportProblem();
@@ -133,10 +134,14 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     BlockMultiVectorPtrFEDD x_;
     // Current output. Null if no valid output stored.
     BlockMultiVectorPtrFEDD y_;
-    // Tangent of the nonlinear Schwarz operator as used in ASPEN
-    BlockMatrixPtrFEDD localJacobian_;
-    // Local (serial) overlapping map object
-    ConstXMapPtr mapOverlappingLocal_;
+    // Tangent of the nonlinear problem R_iDF(u_i)P_i as used in ASPEN
+    BlockMatrixPtrFEDD localJacobian1xGhosts_;
+    // Tangent of the nonlinear problem R_iDF(u_i)
+    BlockMatrixPtrFEDD localJacobian2xGhosts_;
+    // Local (serial) overlapping map object with one ghost layer
+    ConstXMapPtr mapOverlapping1xGhostsLocal_;
+    // Local (serial) overlapping map object with two ghost layers
+    ConstXMapPtr mapOverlapping2xGhostsLocal_;
 
     // Newtons method params
     double newtonTol_;
@@ -162,7 +167,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     BlockMultiVectorPtrFEDD solutionTmp_;
     // FE assembly factory for global and local assembly
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
-    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryLocal_;
+    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactory1xGhostsLocal_;
+    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactory2xGhostsLocal_;
 };
 
 } // namespace FROSch

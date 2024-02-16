@@ -1056,6 +1056,20 @@ typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getMap
 }
 
 template <class SC, class LO, class GO, class NO>
+typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getMapOverlapping2xGhosts() const {
+
+    return mesh_->getMapOverlapping2xGhosts();
+}
+
+
+template <class SC, class LO, class GO, class NO>
+typename Domain<SC, LO, GO, NO>::MapConstPtr_Type Domain<SC, LO, GO, NO>::getMapOverlapping() const {
+
+    return mesh_->getMapOverlapping();
+}
+
+
+template <class SC, class LO, class GO, class NO>
 typename Domain<SC, LO, GO, NO>::GraphPtr_Type Domain<SC, LO, GO, NO>::getDualGraph() const {
     return mesh_->getDualGraph();
 }

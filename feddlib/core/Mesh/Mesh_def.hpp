@@ -544,6 +544,13 @@ typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOver
 }
 
 template <class SC, class LO, class GO, class NO>
+typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping2xGhosts() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(mapOverlapping2xGhosts_.is_null(), std::runtime_error,
+                               "Overlapping map of mesh does not exist.");
+    return mapOverlapping2xGhosts_;
+}
+
+template <class SC, class LO, class GO, class NO>
 typename Mesh<SC, LO, GO, NO>::MapConstPtr_Type Mesh<SC, LO, GO, NO>::getMapOverlapping() const {
     TEUCHOS_TEST_FOR_EXCEPTION(mapOverlapping_.is_null(), std::runtime_error,
                                "Overlapping interior element map of mesh does not exist.");
@@ -555,6 +562,13 @@ typename Mesh<SC, LO, GO, NO>::ElementsPtr_Type Mesh<SC, LO, GO, NO>::getElement
     TEUCHOS_TEST_FOR_EXCEPTION(elementsOverlapping1xGhosts_.is_null(), std::runtime_error,
                                "Overlapping elements have not been constructed.");
     return elementsOverlapping1xGhosts_;
+}
+
+template <class SC, class LO, class GO, class NO>
+typename Mesh<SC, LO, GO, NO>::ElementsPtr_Type Mesh<SC, LO, GO, NO>::getElementsOverlapping2xGhosts() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(elementsOverlapping2xGhosts_.is_null(), std::runtime_error,
+                               "Overlapping elements have not been constructed.");
+    return elementsOverlapping2xGhosts_;
 }
 
 template <class SC, class LO, class GO, class NO>
