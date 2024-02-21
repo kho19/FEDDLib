@@ -1,7 +1,7 @@
 <ParameterList name="solver">
   <Parameter name="Nonlin Schwarz Variant" type="string" value="ASPEN" />
-  <Parameter name="Overlap" type="int" value="0" />
-  <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
+  <Parameter name="Overlap" type="int" value="2" />
+  <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
   <ParameterList name="ThyraSolver">
     <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
     <ParameterList name="Linear Solver Types">

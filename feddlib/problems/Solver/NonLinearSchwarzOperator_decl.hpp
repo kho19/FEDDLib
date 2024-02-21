@@ -98,10 +98,9 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
   public:
     explicit NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm, ParameterListPtr parameterList,
-                             NonLinearProblemPtrFEDD problem);
+                                      NonLinearProblemPtrFEDD problem);
 
     ~NonLinearSchwarzOperator() = default;
-
 
     int initialize() {
         initialize(0);
@@ -165,6 +164,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     Teuchos::RCP<FEDD::Elements> elementsCTmp_;
     // Current global solution of the problem
     BlockMultiVectorPtrFEDD solutionTmp_;
+    BlockMatrixPtrFEDD systemTmp_;
     // FE assembly factory for global and local assembly
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactory1xGhostsLocal_;

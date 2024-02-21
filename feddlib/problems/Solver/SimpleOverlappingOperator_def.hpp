@@ -3,28 +3,33 @@
 
 #include "SimpleOverlappingOperator_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
+#include <FROSch_OverlappingOperator_decl.hpp>
 #include <Teuchos_Array.hpp>
 #include <Teuchos_ArrayViewDecl.hpp>
 #include <Teuchos_CommHelpers.hpp>
 #include <Teuchos_DefaultSerialComm.hpp>
 #include <Teuchos_EReductionType.hpp>
 #include <Teuchos_RCPDecl.hpp>
+#include <Teuchos_VerboseObject.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Teuchos_implicit_cast.hpp>
 #include <Xpetra_ConfigDefs.hpp>
 #include <Xpetra_CrsMatrix.hpp>
+#include <Xpetra_ExportFactory.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_Map_decl.hpp>
 #include <Xpetra_MatrixFactory.hpp>
+#include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <stdexcept>
 #include <string>
+#include <trilinos_amd.h>
 
 namespace FROSch {
 
 template <class SC, class LO, class GO, class NO>
 SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(ConstXMatrixPtr k, ParameterListPtr parameterList)
-    : OverlappingOperator<SC, LO, GO, NO>(k, parameterList), overlappingWithGhostsMap_(), overlappingColMap_(),
-      uniqueMap_(), overlappingWithGhostsMatrix_() {
+    : OverlappingOperator<SC, LO, GO, NO>(k, parameterList), overlapping2xGhostsMatrix_(), overlapping2xGhostsMap_(),
+      uniqueMap_(), importer2xTo1x_(), x_1xGhosts_(), x_2xGhosts_(), y_1xGhosts_() {
     // Override the combine mode of the FROSch operator base object from the nonlinear Schwarz configuration
     if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Averaging")) {
         this->Combine_ = this->CombinationType::Averaging;
@@ -36,10 +41,11 @@ SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(ConstXMatri
 }
 
 template <class SC, class LO, class GO, class NO>
-int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(CommPtr serialComm, ConstXMatrixPtr localJacobian,
-                                                          ConstXMapPtr overlappingWithGhostsMap,
-                                                          ConstXMapPtr overlappingColMap, ConstXMapPtr overlappingMap,
-                                                          ConstXMapPtr uniqueMap) {
+int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(CommPtr serialComm, ConstXMatrixPtr jacobian1xGhosts,
+                                                          ConstXMatrixPtr jacobian2xGhosts, ConstXMapPtr overlappingMap,
+                                                          ConstXMapPtr overlapping1xGhostsMap,
+                                                          ConstXMapPtr overlapping2xGhostsMap, ConstXMapPtr uniqueMap,
+                                                          FEDD::vec_int_ptr_Type bcFlagOverlapping1xGhosts) {
     // AlgebraicOverlappingOperator does: calculates overlap multiplicity if needed and does symbolic extraction
     // of local subdomain matrix and initialization of solver (symbolic factorization)
     // Here we just read in the localSubdomainMatrix since it already exists
@@ -60,19 +66,29 @@ int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(CommPtr serialComm, Co
 
     // Need to pass the serial communicator on which localJacobian lives
     this->SerialComm_ = serialComm;
-    overlappingWithGhostsMap_ = overlappingWithGhostsMap;
-    overlappingColMap_ = overlappingColMap;
-    this->OverlappingMap_ = overlappingMap;
+    this->OverlappingMatrix_ = jacobian1xGhosts;
+    overlapping2xGhostsMatrix_ = jacobian2xGhosts;
+    overlapping2xGhostsMap_ = overlapping2xGhostsMap;
     uniqueMap_ = uniqueMap;
+    bcFlagOverlapping1xGhosts_ = bcFlagOverlapping1xGhosts;
 
-    buildOverlappingMatrices(localJacobian);
-    //  Calculate overlap multiplicity if needed
+    // Initialize importer 2xGhosts -> 1xGhosts
+    importerUniqueTo2x_ = Xpetra::ImportFactory<LO, GO>::Build(uniqueMap, overlapping2xGhostsMap);
+    importer2xTo1x_ = Xpetra::ImportFactory<LO, GO>::Build(overlapping2xGhostsMap, overlapping1xGhostsMap);
+    if (this->Combine_ != OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted) {
+        exporter1xToUnique_ = Xpetra::ExportFactory<LO, GO>::Build(overlapping1xGhostsMap, uniqueMap);
+    }
+
+    //  Calculate overlap multiplicity if needed. OverlappingMap without ghosts required for this
+    this->OverlappingMap_ = overlappingMap;
     this->initializeOverlappingOperator();
 
+    // Distributed map corresponding to OverlappingMatrix_
+    this->OverlappingMap_ = overlapping1xGhostsMap;
     // Start debugging
-    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-    FEDD::logGreen("Multiplicity_", this->MpiComm_);
-    this->Multiplicity_->describe(*out, Teuchos::VERB_EXTREME);
+    /* auto out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
+    /* FEDD::logGreen("Multiplicity_", this->MpiComm_); */
+    /* this->Multiplicity_->describe(*out, Teuchos::VERB_EXTREME); */
     // End debugging
     // Compute symbolic factorization
     this->initializeSubdomainSolver(this->OverlappingMatrix_);
@@ -92,152 +108,91 @@ template <class SC, class LO, class GO, class NO> int SimpleOverlappingOperator<
     return 0;
 }
 
+// TODO: kho need to implement the apply method since each matrix in overlapping subdomain is different i.e.
+// overlappingOperator apply method cannot be used
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, ETransp mode, SC alpha,
                                                       SC beta) const {
-    // move the input to the local serial overlapping maps including ghost layer (localJacobian rowMap)
-    // apply the local OverlappingIncludingGhostsMatrix_
-    // restrict to the local overlapping subdomain (remove ghosts) corresponds to (this->OverlappingMap_)
-    // apply the local solution
-}
+    // Start DEBUG
+    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
+    /* FEDD::logGreen("overlapping2xGhostsMatrix_", this->MpiComm_); */
+    /* overlapping2xGhostsMatrix_->describe(*out, VERB_EXTREME); */
+    // End DEBUG
 
-// NOTE: It may be more efficient to locally assemble these matrices in nonlinearSchwarzOperator, avoiding the
-// communication overhead of this function
-template <class SC, class LO, class GO, class NO>
-void SimpleOverlappingOperator<SC, LO, GO, NO>::buildOverlappingMatrices(ConstXMatrixPtr localJacobian) {
+    // y = alpha*f(x) + beta*y
+    // move the input to the local serial overlapping 2x ghosts map
+    if (x_2xGhosts_.is_null()) {
+        x_2xGhosts_ = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(overlapping2xGhostsMap_, x.getNumVectors());
+    } else {
+        x_2xGhosts_->replaceMap(overlapping2xGhostsMap_);
+    }
+    x_2xGhosts_->doImport(x, *importerUniqueTo2x_, Xpetra::CombineMode::INSERT);
+    x_2xGhosts_->replaceMap(overlapping2xGhostsMatrix_->getRowMap());
 
-    TEUCHOS_TEST_FOR_EXCEPTION(
-        overlappingWithGhostsMap_.is_null(), std::runtime_error,
-        "overlappingWithGhostsMatrix_ lives on mapOverlappingGlobal_ and cannot be built without.");
-    TEUCHOS_TEST_FOR_EXCEPTION(
-        overlappingColMap_.is_null(), std::runtime_error,
-        "overlappingColMap_ is required for correct local insertion of off rank values on ghost layer.");
-    TEUCHOS_TEST_FOR_EXCEPTION(this->OverlappingMap_.is_null(), std::runtime_error,
-                               "OverlappingMap_ is required for correct assembly of local Jacobians.");
-    TEUCHOS_TEST_FOR_EXCEPTION(uniqueMap_.is_null(), std::runtime_error,
-                               "uniqueMap_ is required for correct communication of off rank values.");
+    //  Apply DF(u_i)
+    overlapping2xGhostsMatrix_->apply(*x_2xGhosts_, *x_2xGhosts_, mode, ST::one(), ST::zero());
 
-    // Get the global max number of elements per row across all serially distributed matrices
-    int localMaxNumRowEntries = localJacobian->getLocalMaxNumRowEntries();
-    int globalMaxNumRowEntries = 0;
-    Teuchos::reduceAll(*this->MpiComm_, Teuchos::REDUCE_MAX, 1, &localMaxNumRowEntries, &globalMaxNumRowEntries);
-
-    auto globalUniqueMatrix =
-        Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(uniqueMap_, static_cast<GO>(globalMaxNumRowEntries));
-
-    Teuchos::Array<GO> tempIndices;
-    // Local and global number of elements is the same (as is expected)
-    for (auto i = 0; i < globalUniqueMatrix->getMap()->getLocalNumElements(); i++) {
-        Teuchos::ArrayView<const LO> indices;
-        Teuchos::ArrayView<const SC> values;
-        // Map local unique index to local overlapping index
-        auto localOverlappingIndex = overlappingWithGhostsMap_->getLocalElement(uniqueMap_->getGlobalElement(i));
-        localJacobian->getLocalRowView(localOverlappingIndex, indices, values);
-        Teuchos::Array<GO> globalIndices(indices.size());
-
-        // Map local indices to global indices for insertGlobalValues
-        // Column map from global assembly is valid for interior nodes since interior nodes "see" all surrounding
-        // nodes even on serially distributed subdomains. In constrast, ghost nodes will not "see" globally adjacent
-        // nodes in other subdomains during serial assembly leading to different number of row entries in globally
-        // assembled and locally assembled and then combined matrices.
-        // insertLocalValues cannot be used since column map of globalOverlappingWithGhostsMatrix unknown
-        for (auto j = 0; j < indices.size(); j++) {
-            globalIndices.at(j) = overlappingColMap_->getGlobalElement(indices[j]);
+    // Restrict to overlap 1x Ghosts
+    x_2xGhosts_->replaceMap(overlapping2xGhostsMap_);
+    if (x_1xGhosts_.is_null()) {
+        x_1xGhosts_ = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->OverlappingMap_, x.getNumVectors());
+    } else {
+        x_1xGhosts_->replaceMap(this->OverlappingMap_);
+    }
+    x_1xGhosts_->doImport(*x_2xGhosts_, *this->importer2xTo1x_, Xpetra::CombineMode::INSERT);
+    // Set solution on ghost points to zero to build \sum P_ig_i
+    for (int i = 0; i < bcFlagOverlapping1xGhosts_->size(); i++) {
+        if (bcFlagOverlapping1xGhosts_->at(i) == -99) {
+            x_1xGhosts_->replaceLocalValue(i, 0, ST::zero());
         }
-
-        globalUniqueMatrix->insertGlobalValues(uniqueMap_->getGlobalElement(i), globalIndices, values);
     }
 
-    // Correct values will be broadcasted during fill complete since values are distributed according to uniqueMap_ and
-    // otherwise matrix is filled with zeros
-    globalUniqueMatrix->fillComplete();
+    x_1xGhosts_->replaceMap(this->OverlappingMatrix_->getRowMap());
 
-    auto importer = Xpetra::ImportFactory<LO, GO>::Build(uniqueMap_, overlappingWithGhostsMap_);
-    auto globalOverlappingWithGhostsMatrix =
-        Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(globalUniqueMatrix, *importer);
+    // Apply local solution
+    // NOTE: if FROSch_OverlappingOperator->apply() did not expect a uniquely distributed input, it could be used here
+    if (y_1xGhosts_.is_null()) {
+        y_1xGhosts_ =
+            Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->OverlappingMatrix_->getRowMap(), x.getNumVectors());
+    } else {
+        y_1xGhosts_->replaceMap(this->OverlappingMatrix_->getRowMap());
+    }
+    this->SubdomainSolver_->apply(*x_1xGhosts_, *y_1xGhosts_, mode, ST::one(), ST::zero());
+    y_1xGhosts_->replaceMap(this->OverlappingMap_);
 
-    overlappingWithGhostsMatrix_ = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
-        localJacobian->getRowMap(), localJacobian->getLocalMaxNumRowEntries());
+    if (y_unique_.is_null()) {
+        y_unique_ = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(uniqueMap_, x.getNumVectors());
+    } else {
+        y_unique_->putScalar(ST::zero());
+    }
 
-    // Fill the local overlappingMatrixWithGhosts
-    // Alternative way of copying to local matrix used below
-    for (auto i = 0; i < overlappingWithGhostsMap_->getLocalNumElements(); i++) {
-        Teuchos::ArrayView<const LO> indices;
-        Teuchos::ArrayView<const SC> values;
-        globalOverlappingWithGhostsMatrix->getLocalRowView(i, indices, values);
-        Teuchos::Array<GO> localIndices;
-        Teuchos::Array<SC> localValues;
-        for (auto j = 0; j < indices.size(); j++) {
-            // Rows of globalOverlappingWithGhostsMatrix corresponding to the ghost layer contain entries for nodes in
-            // adjacent subdomains. These entries should not be added to local overlappingWithGhostsMatrix_.
-            // If global index is in the local row map, then the corresponding node is in the subdomain
-            auto globalIndex = globalOverlappingWithGhostsMatrix->getColMap()->getGlobalElement(indices[j]);
-            if (overlappingWithGhostsMap_->isNodeGlobalElement(globalIndex)) {
-                localIndices.push_back(indices[j]);
-                localValues.push_back(values[j]);
+    if (this->Combine_ == OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted) {
+        GO globalID = 0;
+        LO localID = 0;
+        for (auto i = 0; i < y_unique_->getNumVectors(); i++) {
+            auto y_1xGhosts_Data = y_1xGhosts_->getData(i);
+            for (auto j = 0; j < uniqueMap_->getLocalNumElements(); j++) {
+                globalID = uniqueMap_->getGlobalElement(j);
+                localID = this->OverlappingMap_->getLocalElement(globalID);
+                y_unique_->getDataNonConst(i)[j] = y_1xGhosts_Data[localID];
             }
         }
-        overlappingWithGhostsMatrix_->insertGlobalValues(i, localIndices, localValues);
+    } else {
+        // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
+        // Use Insert since newSolution does not contain any values yet
+        y_unique_->doExport(*y_1xGhosts_, *exporter1xToUnique_, Xpetra::CombineMode::ADD);
     }
-    overlappingWithGhostsMatrix_->fillComplete();
-
-    // Restrict localJacobian to the interior of the subdomain (excluding ghosts)
-    importer = Xpetra::ImportFactory<LO, GO>::Build(uniqueMap_, this->OverlappingMap_);
-    auto globalOverlappingMatrix = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
-        this->OverlappingMap_, globalOverlappingWithGhostsMatrix->getGlobalMaxNumRowEntries());
-    // Not calling fillComplete() here since matrix will be discarded after filling local matrix
-    // Have to use getGlobalRowView() instead of getLocalRowView() since no column map exists without calling
-    // fillComplete()
-    globalOverlappingMatrix->doImport(*globalUniqueMatrix, *importer, Xpetra::CombineMode::INSERT);
-
-    auto overlappingSerialMap = Xpetra::MapFactory<LO, GO, NO>::Build(
-        this->OverlappingMap_->lib(), this->OverlappingMap_->getLocalNumElements(),
-        this->OverlappingMap_->getLocalNumElements(), ST::zero(), this->SerialComm_);
-
-    // Required for construction since this->OverlappingMatrix_ is const
-    auto overlappingMatrix =
-        Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(overlappingSerialMap, localJacobian->getLocalMaxNumRowEntries());
-
-    for (auto i = 0; i < overlappingSerialMap->getLocalNumElements(); i++) {
-        Teuchos::ArrayView<const GO> indices;
-        Teuchos::ArrayView<const SC> values;
-        globalOverlappingMatrix->getGlobalRowView(this->OverlappingMap_->getGlobalElement(i), indices, values);
-
-        if (indices.size() > 0) {
-            Teuchos::Array<GO> localIndices;
-            Teuchos::Array<SC> localValues;
-            for (auto j = 0; j < indices.size(); j++) {
-                // If node is in interior map (excluding ghosts), add to OverlappingMatrix_
-                auto localIndex = this->OverlappingMap_->getLocalElement(indices[j]);
-                if (localIndex >= 0) {
-                    localIndices.push_back(localIndex);
-                    localValues.push_back(values[j]);
-                }
+    if (this->Combine_ == OverlappingOperator<SC, LO, GO, NO>::CombinationType::Averaging) {
+        // TODO: kho multiplicity probably is not calculated correctly because not for map with ghosts
+        auto scaling = this->Multiplicity_->getData(0);
+        for (auto i = 0; i < y_unique_->getNumVectors(); i++) {
+            auto values = y_unique_->getDataNonConst(i);
+            for (auto j = 0; j < values.size(); j++) {
+                values[j] = values[j] / scaling[j];
             }
-            // inserting local and global elements does the same thing here since the object is serial
-            overlappingMatrix->insertGlobalValues(i, localIndices, localValues);
         }
     }
-    overlappingMatrix->fillComplete();
-    this->OverlappingMatrix_ = overlappingMatrix;
-
-    // Start debugging
-    // ##################### Print functions ###################
-    /* auto out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
-    /* FEDD::logGreen("localJacobian", this->MpiComm_); */
-    /* localJacobian->describe(*out, Teuchos::VERB_EXTREME); */
-    /* FEDD::logGreen("OverlappingMatrix_", this->MpiComm_); */
-    /* this->OverlappingMatrix_->describe(*out, Teuchos::VERB_EXTREME); */
-    /* FEDD::logGreen("globalOverlappingMatrix", this->MpiComm_); */
-    /* globalOverlappingMatrix->fillComplete(); */
-    /* globalOverlappingMatrix->describe(*out, Teuchos::VERB_EXTREME); */
-    /* FEDD::logGreen("overlappingMatrixWithGhosts_", this->MpiComm_); */
-    /* overlappingMatrixWithGhosts_->describe(*out, Teuchos::VERB_EXTREME); */
-    /* FEDD::logGreen("globalOverlappingMatrixWithGhosts", this->MpiComm_); */
-    /* globalOverlappingMatrixWithGhosts->describe(*out, Teuchos::VERB_EXTREME); */
-    /* FEDD::logGreen("uniqueMatrix", this->MpiComm_); */
-    /* globalUniqueMatrixWithGhosts->describe(*out, Teuchos::VERB_EXTREME); */
-    // End debugging
+    y.update(alpha, *y_unique_, beta);
 }
 
 // TODO: a lot of this implementation could be moved to FROSch

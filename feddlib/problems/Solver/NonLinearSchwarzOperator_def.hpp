@@ -53,6 +53,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr mpiCo
       multiplicity_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, mapRepeatedMpiTmp_{},
       mapUniqueMpiTmp_{}, pointsRepTmp_{}, pointsUniTmp_{}, bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{},
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
       feFactoryTmp_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
       feFactory1xGhostsLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
       feFactory2xGhostsLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())} {
@@ -123,6 +124,7 @@ int NonLinearSchwarzOperator<SC, LO, GO, NO>::initialize(int overlap) {
     bcFlagUniTmp_ = mesh->getBCFlagUnique();
     elementsCTmp_ = mesh->getElementsC();
     solutionTmp_ = problem_->getSolution();
+    systemTmp_ = problem_->system_;
     feFactoryTmp_ = problem_->feFactory_;
 
     mapOverlapping1xGhostsLocal_ = Xpetra::MapFactory<LO, GO, NO>::Build(
@@ -326,8 +328,8 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     mesh->setElementsC(mesh->elementsOverlapping2xGhosts_);
     problem_->feFactory_ = feFactory2xGhostsLocal_;
 
-   // Assemble the extendedLocalJacobian on the second ghost layer
-   problem_->assemble("Newton");
+    // Assemble the extendedLocalJacobian on the second ghost layer
+    problem_->assemble("Newton");
     problem_->setBoundariesSystem();
 
     localJacobian2xGhosts_->addBlock(problem_->system_->getBlock(0, 0), 0, 0);
@@ -419,28 +421,28 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobian2xGhosts() const {
 // NOTE: KHo if FROSch_OverlappingOperator is modified this functionality could be shared
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
-    problem_->system_.reset(new FEDD::BlockMatrix<SC, LO, GO, NO>(1));
+    problem_->system_ = systemTmp_;
 
     // TODO: KHo make this work for block and vector-valued systems
     auto domainPtr_vec = problem_->getDomainVector();
     auto mapUnique = domainPtr_vec.at(0)->getMapUnique();
     auto mapOverlapping = domainPtr_vec.at(0)->getMapOverlapping1xGhosts();
-    auto overlappingY = problem_->solution_->getBlockNonConst(0);
+    auto y_overlapping = problem_->solution_->getBlockNonConst(0);
 
     // For testing difference between add and insert
     /* if (this->MpiComm_->getRank() == 0) { */
-    /*     overlappingY->putScalar(1.); */
+    /*     y_overlapping->putScalar(1.); */
     /* } else if (this->MpiComm_->getRank() == 1) { */
-    /*     overlappingY->putScalar(2.); */
+    /*     y_overlapping->putScalar(2.); */
     /* } else if (this->MpiComm_->getRank() == 2) { */
-    /*     overlappingY->putScalar(4.); */
+    /*     y_overlapping->putScalar(4.); */
     /* } else if (this->MpiComm_->getRank() == 3) { */
-    /*     overlappingY->putScalar(7.); */
+    /*     y_overlapping->putScalar(7.); */
     /* } */
 
-    overlappingY->replaceMap(mapOverlapping);
+    y_overlapping->replaceMap(mapOverlapping);
 
-    auto uniqueY = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
+    auto y_unique = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
     if (combinationMode_ == CombinationMode::Restricted) {
         GO globID = 0;
         LO localID = 0;
@@ -451,31 +453,31 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
         //  Import in Reverse mode: like Export in forward mode
         //  Conclusion: using an Importer results in a correct distribution. Probably because order in which mapping is
         //  done happens to be correct. Probably cannot be relied on.
-        /* uniqueY->importFromVector(overlappingY, true, "Insert", "Forward"); */
-        for (auto i = 0; i < uniqueY->getNumVectors(); i++) {
-            auto overlappingYData = overlappingY->getData(i);
+        /* y_unique_->importFromVector(y_overlapping, true, "Insert", "Forward"); */
+        for (auto i = 0; i < y_unique->getNumVectors(); i++) {
+            auto y_overlappingData = y_overlapping->getData(i);
             for (auto j = 0; j < mapUnique->getNodeNumElements(); j++) {
                 globID = mapUnique->getGlobalElement(j);
                 localID = mapOverlapping->getLocalElement(globID);
-                uniqueY->getDataNonConst(i)[j] = overlappingYData[localID];
+                y_unique->getDataNonConst(i)[j] = y_overlappingData[localID];
             }
         }
     } else {
         // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
         // Use Insert since newSolution does not contain any values yet
-        uniqueY->exportFromVector(overlappingY, true, "Add", "Forward");
+        y_unique->exportFromVector(y_overlapping, true, "Add", "Forward");
     }
     if (combinationMode_ == CombinationMode::Averaging) {
 
         auto scaling = multiplicity_->getBlock(0)->getData(0);
-        for (auto j = 0; j < uniqueY->getNumVectors(); j++) {
-            auto values = uniqueY->getDataNonConst(j);
+        for (auto j = 0; j < y_unique->getNumVectors(); j++) {
+            auto values = y_unique->getDataNonConst(j);
             for (auto i = 0; i < values.size(); i++) {
                 values[i] = values[i] / scaling[i];
             }
         }
     }
-    y_->addBlock(uniqueY, 0);
+    y_->addBlock(y_unique, 0);
 }
 } // namespace FROSch
 

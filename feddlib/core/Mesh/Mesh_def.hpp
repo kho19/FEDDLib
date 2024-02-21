@@ -572,6 +572,14 @@ typename Mesh<SC, LO, GO, NO>::ElementsPtr_Type Mesh<SC, LO, GO, NO>::getElement
 }
 
 template <class SC, class LO, class GO, class NO>
+vec_int_ptr_Type  Mesh<SC, LO, GO, NO>::getBCFlagOverlapping1xGhosts() const {
+    TEUCHOS_TEST_FOR_EXCEPTION(bcFlagOverlapping1xGhosts_.is_null(), std::runtime_error,
+                               "1x ghost flags have not been set.");
+    return bcFlagOverlapping1xGhosts_;
+}
+
+
+template <class SC, class LO, class GO, class NO>
 void Mesh<SC, LO, GO, NO>::setElementsC(ElementsPtr_Type newElements) const {
     elementsC_ = newElements;
 }
