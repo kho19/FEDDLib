@@ -144,12 +144,10 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     vec2D_int_ptr_Type getElements();
 
     // ##################### Nonlinear Schwarz related functions ###############
-    MapConstPtr_Type getMapOverlapping1xGhosts() const;
-    MapConstPtr_Type getMapOverlapping2xGhosts() const;
+    MapConstPtr_Type getMapOverlappingGhosts() const;
     MapConstPtr_Type getMapOverlapping() const;
-    ElementsPtr_Type getElementsOverlapping1xGhosts() const;
-    ElementsPtr_Type getElementsOverlapping2xGhosts() const;
-    vec_int_ptr_Type getBCFlagOverlapping1xGhosts() const;
+    ElementsPtr_Type getElementsOverlappingGhosts() const;
+    vec_int_ptr_Type getBCFlagOverlappingGhosts() const;
 
     // Have to make these const and the maps mutable to fit to the const structure of problem <- domain <- mesh
     void setElementsC(ElementsPtr_Type newElements) const;
@@ -206,23 +204,15 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     // dual graph of the interior (excluding ghost layer) of the overlapping subdomain
     GraphPtr_Type dualGraph_;
     // Overlapping partition of nodes for nonlinear Schwarz method
-    MapPtr_Type mapOverlapping1xGhosts_;
-    // Overlapping partition with the second ghost layer
-    MapPtr_Type mapOverlapping2xGhosts_;
+    MapPtr_Type mapOverlappingGhosts_;
     // Only interior nodes of the subdomain
     MapPtr_Type mapOverlapping_;
     // List of points in the overlapping subdomain
-    vec2D_dbl_ptr_Type pointsOverlapping1xGhosts_;
-    // List of points in the overlapping subdomain with second ghost layer
-    vec2D_dbl_ptr_Type pointsOverlapping2xGhosts_;
-    // BC flags corresponding to pointsOverlapping1xGhosts_
-    vec_int_ptr_Type bcFlagOverlapping1xGhosts_;
-    // BC flags corresponding to pointsOverlapping2xGhosts_
-    vec_int_ptr_Type bcFlagOverlapping2xGhosts_;
+    vec2D_dbl_ptr_Type pointsOverlappingGhosts_;
+    // BC flags corresponding to pointsOverlappingGhosts_
+    vec_int_ptr_Type bcFlagOverlappingGhosts_;
     // Elements in overlapping subdomain
-    ElementsPtr_Type elementsOverlapping1xGhosts_;
-    // Elements in overlapping subdomain with second ghost layer
-    ElementsPtr_Type elementsOverlapping2xGhosts_;
+    ElementsPtr_Type elementsOverlappingGhosts_;
 
     /* ###################################################################### */
 private:

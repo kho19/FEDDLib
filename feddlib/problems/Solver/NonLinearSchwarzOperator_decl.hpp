@@ -97,16 +97,12 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
-    explicit NonLinearSchwarzOperator(CommPtr mpiComm, CommPtr serialComm, ParameterListPtr parameterList,
-                                      NonLinearProblemPtrFEDD problem);
+    explicit NonLinearSchwarzOperator(CommPtr serialComm, NonLinearProblemPtrFEDD problem,
+                                      ParameterListPtr parameterList);
 
     ~NonLinearSchwarzOperator() = default;
 
-    int initialize() {
-        initialize(0);
-        return 0;
-    };
-    int initialize(int overlap);
+    int initialize();
 
     int compute();
 
@@ -121,8 +117,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     string description() const;
 
-    BlockMatrixPtrFEDD getLocalJacobian1xGhosts() const;
-    BlockMatrixPtrFEDD getLocalJacobian2xGhosts() const;
+    BlockMatrixPtrFEDD getLocalJacobianGhosts() const;
 
   private:
     void replaceMapAndExportProblem();
@@ -134,13 +129,9 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     // Current output. Null if no valid output stored.
     BlockMultiVectorPtrFEDD y_;
     // Tangent of the nonlinear problem R_iDF(u_i)P_i as used in ASPEN
-    BlockMatrixPtrFEDD localJacobian1xGhosts_;
-    // Tangent of the nonlinear problem R_iDF(u_i)
-    BlockMatrixPtrFEDD localJacobian2xGhosts_;
+    BlockMatrixPtrFEDD localJacobianGhosts_;
     // Local (serial) overlapping map object with one ghost layer
-    ConstXMapPtr mapOverlapping1xGhostsLocal_;
-    // Local (serial) overlapping map object with two ghost layers
-    ConstXMapPtr mapOverlapping2xGhostsLocal_;
+    ConstXMapPtr mapOverlappingGhostsLocal_;
 
     // Newtons method params
     double newtonTol_;
@@ -167,8 +158,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
     BlockMatrixPtrFEDD systemTmp_;
     // FE assembly factory for global and local assembly
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
-    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactory1xGhostsLocal_;
-    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactory2xGhostsLocal_;
+    Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryGhostsLocal_;
 };
 
 } // namespace FROSch

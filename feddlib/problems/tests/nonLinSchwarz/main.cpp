@@ -2,6 +2,7 @@
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/General/ExporterParaView.hpp"
+#include "feddlib/core/LinearAlgebra/Matrix_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
@@ -10,6 +11,7 @@
 #include "feddlib/problems/Solver/SimpleOverlappingOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace.hpp"
 #include <FROSch_AlgebraicOverlappingOperator_decl.hpp>
+#include <FROSch_ExtractSubmatrices_decl.hpp>
 #include <FROSch_OverlappingOperator_decl.hpp>
 #include <Teuchos_ArrayViewDecl.hpp>
 #include <Teuchos_BLAS_types.hpp>
@@ -25,6 +27,7 @@
 #include <Xpetra_ConfigDefs.hpp>
 #include <Xpetra_CrsGraph.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
+#include <Xpetra_Import.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_MultiVectorFactory_decl.hpp>
@@ -211,12 +214,18 @@ int main(int argc, char *argv[]) {
 void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     logGreen("Commencing nonlinear Schwarz solve", problem->getComm());
+
     // Define nonlinear Schwarz operator
     auto domainVec = problem->getDomainVector();
     auto mpiComm = domainVec.at(0)->getComm();
     auto serialComm = Teuchos::createSerialComm<LO>();
-    auto nonLinearSchwarzOp = Teuchos::rcp(new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(
-        mpiComm, serialComm, problem->getParameterList(), problem));
+    // Nonlinear Schwarz operator needs the system matrix internally
+    auto dummyMat = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap());
+    dummyMat->fillComplete();
+
+    problem->system_->addBlock(Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(dummyMat)), 0, 0);
+    auto nonLinearSchwarzOp = Teuchos::rcp(
+        new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(serialComm, problem, problem->getParameterList()));
     nonLinearSchwarzOp->initialize();
 
     auto variantString = problem->getParameterList()->get("Nonlin Schwarz Variant", "ASPEN");
@@ -231,14 +240,8 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     // FROSch overlapping operator
     /* Teuchos::RCP<FROSch::OverlappingOperator<SC, LO, GO, NO>> froschOverlappingOperator; */
-    auto dummyMat = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap());
-    dummyMat->fillComplete();
     auto simpleOverlappingOperator =
         Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(dummyMat, problem->getParameterList()));
-
-    /* auto simpleOverlappingOperator =  */
-    /*     Teuchos::rcp(new FROSch::AlgebraicOverlappingOperator<SC, LO, GO, NO>(dummyMat,problem->getParameterList()));
-     */
 
     // Init block vectors for nonlinear residual and outer Newton update
     auto gBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
@@ -249,6 +252,19 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     deltaSolutionBlock->putScalar(0.);
     auto deltaSolution = Teuchos::rcp(new BlockMultiVector_Type(1));
     deltaSolution->addBlock(deltaSolutionBlock, 0);
+
+    Teuchos::RCP<Xpetra::Matrix<SC, LO, GO, NO>> jacobianGhosts;
+    Teuchos::RCP<Xpetra::Import<LO, GO>> uniqueToOverlappingGhostsImporter;
+    RCP<ParameterList> params = parameterList();
+    if (variant == NonlinSchwarzVariant::ASPIN) {
+        jacobianGhosts = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
+            domainVec.at(0)->getMapOverlappingGhosts()->getXpetraMap(), domainVec.at(0)->getApproxEntriesPerRow());
+        uniqueToOverlappingGhostsImporter =
+            Xpetra::ImportFactory<LO, GO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap(),
+                                                 domainVec.at(0)->getMapOverlappingGhosts()->getXpetraMap());
+        // So we can call doImport after calling resumeFill on a fillComplete matrix
+        params->set("Optimize Storage", false);
+    }
 
     // Define convergence requirements
     double gmresIts = 0.;
@@ -261,8 +277,7 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     auto residual0 = problem->calculateResidualNorm();
     auto residual = residual0;
     auto relativeResidual = residual / residual0;
-    // Initial assembly to always have a column map
-    problem->assemble();
+
     // Outer Newton iterations
     while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
         logGreen("Starting outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
@@ -270,81 +285,62 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
         // Compute the residual of the alternative problem \mathcal{F} = g
         // g fulfills the boundary conditions
-        // TODO: kho might need to adjust g on this level so that solution fulfills the boundary conditions
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         nonLinearSchwarzOp->apply(problem->getSolution(), g);
 
         if (variant == NonlinSchwarzVariant::ASPEN) {
             logGreen("Building ASPEN tangent", mpiComm);
-            auto jacobian1xGhosts = nonLinearSchwarzOp->getLocalJacobian1xGhosts()->getBlock(0, 0)->getXpetraMatrix();
-            auto jacobian2xGhosts = nonLinearSchwarzOp->getLocalJacobian2xGhosts()->getBlock(0, 0)->getXpetraMatrix();
-            auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-            simpleOverlappingOperator->initialize(
-                serialComm, jacobian1xGhosts, jacobian2xGhosts,
-                domainVec.at(0)->getMesh()->getMapOverlapping()->getXpetraMap(),
-                domainVec.at(0)->getMesh()->getMapOverlapping1xGhosts()->getXpetraMap(),
-                domainVec.at(0)->getMesh()->getMapOverlapping2xGhosts()->getXpetraMap(),
-                domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap(),
-                domainVec.at(0)->getMesh()->getBCFlagOverlapping1xGhosts());
+
+            auto localJacobian = nonLinearSchwarzOp->getLocalJacobianGhosts()->getBlock(0, 0)->getXpetraMatrix();
+            simpleOverlappingOperator->initialize(serialComm, localJacobian,
+                                                  domainVec.at(0)->getMesh()->getMapOverlapping()->getXpetraMap(),
+                                                  domainVec.at(0)->getMesh()->getMapOverlappingGhosts()->getXpetraMap(),
+                                                  domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap(),
+                                                  domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
+            simpleOverlappingOperator->compute();
+        } else if (variant == NonlinSchwarzVariant::ASPIN) {
+
+            logGreen("Building ASPIN tangent with FROSch", mpiComm);
+            problem->assemble("Newton");
+            problem->setBoundariesSystem();
+            // Compute D\mathcal{F}(u) using FROSch and DF(u)
+            auto jacobian = problem->getSystem()->getBlock(0, 0)->getXpetraMatrix();
+            logGreen("Global num entries: " +
+                         std::to_string(problem->getSystem()->getBlock(0, 0)->getXpetraMatrix()->getGlobalNumEntries()),
+                     mpiComm);
+            jacobianGhosts->setAllToScalar(ST::zero());
+            jacobianGhosts->resumeFill();
+            jacobianGhosts->doImport(*jacobian, *uniqueToOverlappingGhostsImporter, Xpetra::ADD);
+            jacobianGhosts->fillComplete(params);
+            auto localJacobian = FROSch::ExtractLocalSubdomainMatrix(
+                jacobianGhosts.getConst(), domainVec.at(0)->getMapOverlappingGhosts()->getXpetraMap());
+            simpleOverlappingOperator->initialize(serialComm, localJacobian,
+                                                  domainVec.at(0)->getMesh()->getMapOverlapping()->getXpetraMap(),
+                                                  domainVec.at(0)->getMesh()->getMapOverlappingGhosts()->getXpetraMap(),
+                                                  domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap(),
+                                                  domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
             simpleOverlappingOperator->compute();
         }
-        if (variant == NonlinSchwarzVariant::ASPIN) {
-            /*
-                           logGreen("Building ASPIN tangent with FROSch", mpiComm);
-                           problem->assemble("Newton");
-                           problem->setBoundariesSystem();
 
-                           // Compute D\mathcal{F}(u) using FROSch and DF(u)
-                           auto jacobian = problem->getSystem()->getBlock(0, 0)->getXpetraMatrix();
-
-                           simpleOverlappingOperator->resetMatrix(jacobian);
-                           // Be default FROSch extends the subdomains via the dual graph. The overlapping subdomains
-               generated by
-                           // FROSch should thus be the same as those generated by the nonlinear Schwarz operator
-                           simpleOverlappingOperator->initialize(overlap);
-                           simpleOverlappingOperator->compute();
-              */
-        }
-
-        // Start DEBUG
-        /* auto tempUniqueMap = domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap(); */
-        /* auto inVec = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(tempUniqueMap, 1); */
-        /* inVec->putScalar(1); */
-        /* for (auto i = 0; i < inVec->getLocalLength(); i++) { */
-        /*     inVec->replaceLocalValue(i, 0, tempUniqueMap->getGlobalElement(i)); */
-        /* } */
-        /* auto outVec = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build( */
-        /*     domainVec.at(0)->getMesh()->getMapUnique()->getXpetraMap(), 1); */
-        /* froschOverlappingOperator->apply(*inVec, *outVec, NO_TRANS); */
-        /* logGreen("inVec", mpiComm); */
-        /* auto out = Teuchos::VerboseObjectBase::getDefaultOStream(); */
-        /* inVec->describe(*out, Teuchos::VERB_EXTREME); */
-        /* logGreen("outVec", mpiComm); */
-        /* outVec->describe(*out, Teuchos::VERB_EXTREME); */
-        // End DEBUG
         // Convert SchwarzOperator to Thyra::LinearOpBase
-        auto xpetraFROSchOverlappingOperator =
-            rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleOverlappingOperator);
+        auto xpetraOverlappingOperator = rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleOverlappingOperator);
 
         RCP<FROSch::TpetraPreconditioner<SC, LO, GO, NO>> tpetraFROSchOverlappingOperator(
-            new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(xpetraFROSchOverlappingOperator));
+            new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(xpetraOverlappingOperator));
 
         auto tpetraOverlappingOperator =
             rcp_static_cast<Tpetra::Operator<SC, LO, GO, NO>>(tpetraFROSchOverlappingOperator);
 
-        auto thyraFROSchOverlappingOperator = Thyra::createLinearOp(tpetraOverlappingOperator);
+        auto thyraOverlappingOperator = Thyra::createLinearOp(tpetraOverlappingOperator);
 
         // Solve linear system with GMRES
         logGreen("Solving outer linear system", mpiComm);
-        solveThyraLinOp(thyraFROSchOverlappingOperator, deltaSolution->getBlockNonConst(0), g->getBlock(0),
+        solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getBlockNonConst(0), g->getBlock(0),
                         problem->getParameterList());
         // Update the current solution
         // solution = alpha * deltaSolution + beta * solution
-        /* logGreen("Before update: ", mpiComm); */
-        /* problem->solution_->print(); */
         problem->solution_->update(ST::one(), deltaSolution, ST::one());
-        /* logGreen("After update: ", mpiComm); */
-        /* problem->solution_->print(); */
+
         // Compute the residual
         problem->calculateNonLinResidualVec("reverse");
         residual = problem->calculateResidualNorm();

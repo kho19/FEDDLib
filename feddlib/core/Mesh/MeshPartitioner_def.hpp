@@ -1285,7 +1285,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     const auto elementMap = meshUnstr->getElementMap();
     const auto elementMapOverlapping = meshUnstr->dualGraph_->getRowMap();
     const int indexBase = 0;
-    vec_int_Type elementsOverlapping1xGhostsIndices(0);
+    vec_int_Type elementsOverlappingGhostsIndices(0);
 
     // Build index vectors for the elements which can then be used to build the elements in the current subdomain.
     vec_idx_Type eptrVec(0); // Vector for local elements ptr (local is still global at this point)
@@ -1315,7 +1315,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
         // Get the global index of i
         auto globalID = elementMapOverlapping->getGlobalElement(i);
         // Start filling indices of elements in overlapping region including ghosts
-        elementsOverlapping1xGhostsIndices.push_back(globalID);
+        elementsOverlappingGhostsIndices.push_back(globalID);
         // For each element add the indices corresponding to that element
         for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
             pointsOverlappingIndices.push_back(eindVec.at(j));
@@ -1334,23 +1334,14 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     // This is implemented here and not in partitionDualGraphWithOverlap() since the subdomain points list is required
     // which is not built in the latter.
 
-    vec_GO_Type pointsOverlapping1xGhostsIndices(pointsOverlappingIndices);
+    vec_GO_Type pointsOverlappingGhostsIndices(pointsOverlappingIndices);
 
-    buildGhostLayer(pointsOverlapping1xGhostsIndices, elementsOverlapping1xGhostsIndices, meshUnstr->dualGraph_,
-                    meshUnstr->elementsC_);
-
-    // Extend by a second ghost layer. This is required to assemble the R_iDF(u_i) as global values are required on the
-    // first ghost layer when applying R_iDF(u_i) to a global vector
-    vec_GO_Type pointsOverlapping2xGhostsIndices(pointsOverlapping1xGhostsIndices);
-    vec_int_Type elementsOverlapping2xGhostsIndices(elementsOverlapping1xGhostsIndices);
-
-    buildGhostLayer(pointsOverlapping2xGhostsIndices, elementsOverlapping2xGhostsIndices, meshUnstr->dualGraph_,
+    buildGhostLayer(pointsOverlappingGhostsIndices, elementsOverlappingGhostsIndices, meshUnstr->dualGraph_,
                     meshUnstr->elementsC_);
 
     auto pointsRepIndicesView = Teuchos::arrayViewFromVector(pointsRepIndices);
     auto pointsOverlappingIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingIndices);
-    auto pointsOverlapping1xGhostsIndicesView = Teuchos::arrayViewFromVector(pointsOverlapping1xGhostsIndices);
-    auto pointsOverlapping2xGhostsIndicesView = Teuchos::arrayViewFromVector(pointsOverlapping2xGhostsIndices);
+    auto pointsOverlappingGhostsIndicesView = Teuchos::arrayViewFromVector(pointsOverlappingGhostsIndices);
 
     // ==================== Build repeated, unique and overlapping maps ====================
     meshUnstr->mapRepeated_.reset(
@@ -1358,10 +1349,8 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
     meshUnstr->mapUnique_ = meshUnstr->mapRepeated_->buildUniqueMap(rankRanges_.at(meshNumber));
     meshUnstr->mapOverlapping_.reset(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingIndicesView, indexBase, comm_));
-    meshUnstr->mapOverlapping1xGhosts_.reset(
-        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlapping1xGhostsIndicesView, indexBase, comm_));
-    meshUnstr->mapOverlapping2xGhosts_.reset(
-        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlapping2xGhostsIndicesView, indexBase, comm_));
+    meshUnstr->mapOverlappingGhosts_.reset(
+        new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), pointsOverlappingGhostsIndicesView, indexBase, comm_));
 
     // ==================== Set repeated points and BC flags ====================
     // pointsRep_ contains all points after reading from mesh
@@ -1380,47 +1369,24 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
         meshUnstr->bcFlagRep_->at(i) = flags.at(pointIDcont);
     }
 
-    // ==================== Set overlapping points and BC flags with one ghost layer ====================
-    meshUnstr->pointsOverlapping1xGhosts_.reset(new std::vector<std::vector<double>>(
-        meshUnstr->mapOverlapping1xGhosts_->getNodeNumElements(), std::vector<double>(dim, -1.)));
-    meshUnstr->bcFlagOverlapping1xGhosts_.reset(
-        new std::vector<int>(meshUnstr->mapOverlapping1xGhosts_->getNodeNumElements(), 0));
+    // ==================== Set overlapping points and BC flags with ghost layer ====================
+    meshUnstr->pointsOverlappingGhosts_.reset(new std::vector<std::vector<double>>(
+        meshUnstr->mapOverlappingGhosts_->getNodeNumElements(), std::vector<double>(dim, -1.)));
+    meshUnstr->bcFlagOverlappingGhosts_.reset(
+        new std::vector<int>(meshUnstr->mapOverlappingGhosts_->getNodeNumElements(), 0));
 
     auto interiorIt = pointsOverlappingIndices.begin();
-    for (int i = 0; i < pointsOverlapping1xGhostsIndices.size(); i++) {
-        pointIDcont = pointsOverlapping1xGhostsIndices.at(i);
+    for (int i = 0; i < pointsOverlappingGhostsIndices.size(); i++) {
+        pointIDcont = pointsOverlappingGhostsIndices.at(i);
         for (int j = 0; j < dim; j++) {
-            meshUnstr->pointsOverlapping1xGhosts_->at(i).at(j) = points.at(pointIDcont).at(j);
+            meshUnstr->pointsOverlappingGhosts_->at(i).at(j) = points.at(pointIDcont).at(j);
         }
-        meshUnstr->bcFlagOverlapping1xGhosts_->at(i) = flags.at(pointIDcont);
+        meshUnstr->bcFlagOverlappingGhosts_->at(i) = flags.at(pointIDcont);
         // This only works because index lists are ordered
         if (*interiorIt != pointIDcont) {
             // Only set ghost flag for points that are not on the real Dirichlet boundary
             // Further volume flags must be added here if used in the mesh
-            meshUnstr->bcFlagOverlapping1xGhosts_->at(i) = -99;
-        } else {
-            interiorIt++;
-        }
-    }
-
-    // ==================== Set overlapping points and BC flags with two ghost layers ====================
-    meshUnstr->pointsOverlapping2xGhosts_.reset(new std::vector<std::vector<double>>(
-        meshUnstr->mapOverlapping2xGhosts_->getNodeNumElements(), std::vector<double>(dim, -1.)));
-    meshUnstr->bcFlagOverlapping2xGhosts_.reset(
-        new std::vector<int>(meshUnstr->mapOverlapping2xGhosts_->getNodeNumElements(), 0));
-
-    interiorIt = pointsOverlapping1xGhostsIndices.begin();
-    for (int i = 0; i < pointsOverlapping2xGhostsIndices.size(); i++) {
-        pointIDcont = pointsOverlapping2xGhostsIndices.at(i);
-        for (int j = 0; j < dim; j++) {
-            meshUnstr->pointsOverlapping2xGhosts_->at(i).at(j) = points.at(pointIDcont).at(j);
-        }
-        meshUnstr->bcFlagOverlapping2xGhosts_->at(i) = flags.at(pointIDcont);
-        // This only works because index lists are ordered
-        if (*interiorIt != pointIDcont) {
-            // Only set ghost flag for points that are not on the real Dirichlet boundary
-            // Further volume flags must be added here if used in the mesh
-            meshUnstr->bcFlagOverlapping2xGhosts_->at(i) = -99;
+            meshUnstr->bcFlagOverlappingGhosts_->at(i) = -99;
         } else {
             interiorIt++;
         }
@@ -1441,37 +1407,22 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
         meshUnstr->bcFlagUni_->at(i) = meshUnstr->bcFlagRep_->at(map->getLocalElement(indexGlobal));
     }
     // ==================== Build repeated (elementsC_) and overlapping elements ====================
-    meshUnstr->elementsOverlapping1xGhosts_.reset(new Elements(FEType, dim));
-    meshUnstr->elementsOverlapping2xGhosts_.reset(new Elements(FEType, dim));
+    meshUnstr->elementsOverlappingGhosts_.reset(new Elements(FEType, dim));
     meshUnstr->elementsC_.reset(new Elements(FEType, dim));
 
-    for (auto i = 0; i < elementsOverlapping1xGhostsIndices.size(); i++) {
+    for (auto i = 0; i < elementsOverlappingGhostsIndices.size(); i++) {
         // Build local element and save
         std::vector<int> tmpElement;
-        auto globalID = elementsOverlapping1xGhostsIndices.at(i);
+        auto globalID = elementsOverlappingGhostsIndices.at(i);
         // Iterate over the nodes in an element
         for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
             // Map the node index from global to local and save
-            int index = meshUnstr->mapOverlapping1xGhosts_->getLocalElement(eindVec.at(j));
+            int index = meshUnstr->mapOverlappingGhosts_->getLocalElement(eindVec.at(j));
             tmpElement.push_back(index);
         }
         FiniteElement tempFE(tmpElement, elementsMesh->getElement(globalID).getFlag());
         // NOTE KHo Surfaces are not added here for now. Since they probably will not be needed.
-        meshUnstr->elementsOverlapping1xGhosts_->addElement(tempFE);
-    }
-    for (auto i = 0; i < elementsOverlapping2xGhostsIndices.size(); i++) {
-        // Build local element and save
-        std::vector<int> tmpElement;
-        auto globalID = elementsOverlapping2xGhostsIndices.at(i);
-        // Iterate over the nodes in an element
-        for (int j = eptrVec.at(globalID); j < eptrVec.at(globalID + 1); j++) {
-            // Map the node index from global to local and save
-            int index = meshUnstr->mapOverlapping2xGhosts_->getLocalElement(eindVec.at(j));
-            tmpElement.push_back(index);
-        }
-        FiniteElement tempFE(tmpElement, elementsMesh->getElement(globalID).getFlag());
-        // NOTE KHo Surfaces are not added here for now. Since they probably will not be needed.
-        meshUnstr->elementsOverlapping2xGhosts_->addElement(tempFE);
+        meshUnstr->elementsOverlappingGhosts_->addElement(tempFE);
     }
     for (auto i = 0; i < elementMap->getNodeNumElements(); i++) {
         // Build local element and save

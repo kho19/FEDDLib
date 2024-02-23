@@ -108,13 +108,9 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
             "SimpleOverlappingOperator requires local Jacobians, local and global maps and serial "
             "and mpi comms during initialization");
     };
-    int initialize(CommPtr serialComm, ConstXMatrixPtr jacobian1xGhosts, ConstXMatrixPtr jacobian2xGhosts,
-                   ConstXMapPtr overlappingMap, ConstXMapPtr overlapping1xGhostsMap,
-                   ConstXMapPtr overlapping2xGhostsMap, ConstXMapPtr uniqueMap,
-                   FEDD::vec_int_ptr_Type bcFlagOverlapping1xGhosts);
-
-    // TODO: implement this initialize overload for when localOverlappingMatrix has been built by nonlinearSchwarz op
-    int initialize(CommPtr serialComm, ConstXMatrixPtr localJacobian, ConstXMapPtr overlappingWithGhostsMap);
+    int initialize(CommPtr serialComm, ConstXMatrixPtr jacobianGhosts, ConstXMapPtr overlappingMap,
+                   ConstXMapPtr overlappingGhostsMap, ConstXMapPtr uniqueMap,
+                   FEDD::vec_int_ptr_Type bcFlagOverlappingGhosts);
 
     int compute() override;
 
@@ -138,28 +134,22 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
   private:
     // Tangent of the nonlinear Schwarz operator is saved in this->OverlappingMatrix_ which lives on
     // serial version of OverlappingMap_
-    ConstXMatrixPtr overlapping2xGhostsMatrix_;
+
     // Distributed maps
-    // 1xGhostsMap is stored in this->OverlappingMap_
-    ConstXMapPtr overlapping2xGhostsMap_;
+    // GhostsMap is stored in this->OverlappingMap_
     ConstXMapPtr uniqueMap_;
     // Importers
-    XImportPtr importerUniqueTo2x_;
-    XImportPtr importer2xTo1x_;
-    XImportPtr importer1xTo2x_;
+    XImportPtr importerUniqueToGhosts_;
     // Exporters
-    XExportPtr exporter1xToUnique_;
-    XExportPtr exporter2xTo1x_;
-    XExportPtr exporter1xTo2x_;
+    XExportPtr exporterGhostsToUnique_;
 
     // Temp. vectors for local results
-    mutable XMultiVectorPtr x_1xGhosts_;
-    mutable XMultiVectorPtr x_2xGhosts_;
+    mutable XMultiVectorPtr x_Ghosts_;
     mutable XMultiVectorPtr y_unique_;
-    mutable XMultiVectorPtr y_1xGhosts_;
+    mutable XMultiVectorPtr y_Ghosts_;
 
     // Boundary condition flags for recognizing the ghost boundary
-    FEDD::vec_int_ptr_Type bcFlagOverlapping1xGhosts_;
+    FEDD::vec_int_ptr_Type bcFlagOverlappingGhosts_;
 
     // Recombination mode. [Restricted, Averaging, Addition]
     /* RecombinationMode recombinationMode_; */
