@@ -11,6 +11,9 @@ SET(Solver_HEADERS
   Solver/NonLinearSchwarzOperator.hpp
   Solver/NonLinearSchwarzOperator_decl.hpp
   Solver/NonLinearSchwarzOperator_def.hpp
+  Solver/CoarseNonLinearSchwarzOperator.hpp
+  Solver/CoarseNonLinearSchwarzOperator_decl.hpp
+  Solver/CoarseNonLinearSchwarzOperator_def.hpp
     Solver/NonLinearSolver.hpp
     Solver/NonLinearSolver_decl.hpp
     Solver/NonLinearSolver_def.hpp
@@ -34,6 +37,7 @@ SET(Solver_SOURCES
 	Solver/DAESolverInTime.cpp
     Solver/LinearSolver.cpp
     Solver/NonLinearSchwarzOperator.cpp
+    Solver/CoarseNonLinearSchwarzOperator.cpp
     Solver/NonLinearSolver.cpp
     Solver/Preconditioner.cpp
     Solver/PreconditionerOperator.cpp
