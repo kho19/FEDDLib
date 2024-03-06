@@ -36,12 +36,16 @@
  */
 
 namespace FROSch {
+
+// TODO: kho how to pass in a block system? might need to construct a monolithic matrix out of the block for this? The
+// initially passed in matrix is used to build the coarse spaces
+
+// The communicator for this object is taken from the matrix passed to IPOUHarmonicCoarseOperator
 template <class SC, class LO, class GO, class NO>
-CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(CommPtr mpiComm,
-                                                                               ParameterListPtr parameterList,
-                                                                               NonLinearProblemPtrFEDD problem)
-    : SchwarzOperator<SC, LO, GO, NO>(mpiComm), problem_{problem},
-      x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(NonLinearProblemPtrFEDD problem,
+                                                                               ParameterListPtr parameterList)
+    : IPOUHarmonicCoarseOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
+      problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, newtonTol_{}, maxNumIts_{}, criterion_{""} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
@@ -52,19 +56,17 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(C
         TEUCHOS_ASSERT(!domainPtr->getDualGraph().is_null());
     }
 
-    // Assigning parent class protected members is not good practice, but is done here to avoid modifying FROSch code
-    this->ParameterList_ = parameterList;
-
     // Initialize members that cannot be null after construction
-    x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlappingGhosts(), 1)),
-                 0);
+    /* x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlappingGhosts(),
+     * 1)), */
+    /*              0); */
 }
 
 template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::initialize() {
 
     auto domainVec = problem_->getDomainVector();
     auto mesh = domainVec.at(0)->getMesh();
-    auto repeatedMap = domainVec.at(0)->getMapRepeated();
+    auto repeatedMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
 
     // Extract info from parameterList
     newtonTol_ =
@@ -75,32 +77,33 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     // Initialize the underlying IPOUHarmonicCoarseOperator object
     auto coarseParameterList = problem_->getParameterList()->sublist("Coarse Nonlinear Schwarz");
     // TODO: kho dofsMaps need to be built properly for problems with more than one dof per node
-    auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(domainVec.at(0)->getMapRepeated());
+    auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(1);
+    dofsMaps[0] = domainVec.at(0)->getMapRepeated()->getXpetraMap();
     ConstXMultiVectorPtr nullSpaceBasis = null;
-    if (coarseParameterList->isParameter("Null Space")) {
-        nullSpaceBasis = ExtractPtrFromParameterList<XMultiVector>(*coarseParameterList, "Null Space").getConst();
+    if (coarseParameterList.isParameter("Null Space")) {
+        nullSpaceBasis = ExtractPtrFromParameterList<XMultiVector>(coarseParameterList, "Null Space").getConst();
         if (nullSpaceBasis.is_null()) {
             RCP<Tpetra::MultiVector<SC, LO, GO, NO>> nullSpaceBasisTmp =
-                ExtractPtrFromParameterList<Tpetra::MultiVector<SC, LO, GO, NO>>(*coarseParameterList, "Null Space");
+                ExtractPtrFromParameterList<Tpetra::MultiVector<SC, LO, GO, NO>>(coarseParameterList, "Null Space");
 
             RCP<const Xpetra::TpetraMultiVector<SC, LO, GO, NO>> xTpetraNullSpaceBasis(
                 new const Xpetra::TpetraMultiVector<SC, LO, GO, NO>(nullSpaceBasisTmp));
-            nullSpaceBasis = rcp_dynamic_cast<ConstXMultiVector>(xTpetraNullSpaceBasis);
+            nullSpaceBasis = rcp_dynamic_cast<const XMultiVector>(xTpetraNullSpaceBasis);
         }
     }
     // Build nodeList
 
     ConstXMultiVectorPtr nodeList = null;
-    if (coarseParameterList->isParameter("Coordinates List")) {
-        nodeList = ExtractPtrFromParameterList<XMultiVector>(*coarseParameterList, "Coordinates List").getConst();
+    if (coarseParameterList.isParameter("Coordinates List")) {
+        nodeList = ExtractPtrFromParameterList<XMultiVector>(coarseParameterList, "Coordinates List").getConst();
         if (nodeList.is_null()) {
             RCP<Tpetra::MultiVector<SC, LO, GO, NO>> coordinatesListTmp =
-                ExtractPtrFromParameterList<Tpetra::MultiVector<SC, LO, GO, NO>>(*coarseParameterList,
+                ExtractPtrFromParameterList<Tpetra::MultiVector<SC, LO, GO, NO>>(coarseParameterList,
                                                                                  "Coordinates List");
 
             RCP<const Xpetra::TpetraMultiVector<SC, LO, GO, NO>> xTpetraCoordinatesList(
                 new const Xpetra::TpetraMultiVector<SC, LO, GO, NO>(coordinatesListTmp));
-            nodeList = rcp_dynamic_cast<ConstXMultiVector>(xTpetraCoordinatesList);
+            nodeList = rcp_dynamic_cast<const XMultiVector>(xTpetraCoordinatesList);
         }
     }
     // Communicate nodeList
@@ -119,8 +122,9 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     GOVecPtr dirichletBoundaryDofs = null;
     // This builds the coars spaces, assembles the coarse solve map and does symbolic factorization of the coarse
     // problem
-    this->initialize(coarseParameterList->get("Dimension", 2), coarseParameterList->get("DofsPerNode", 1), repeatedMap,
-                     dofsMaps, nullSpaceBasis, nodeList, dirichletBoundaryDofs);
+    IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(coarseParameterList.get("Dimension", 2),
+                                                           coarseParameterList.get("DofsPerNode", 1), repeatedMap,
+                                                           dofsMaps, nullSpaceBasis, nodeList, dirichletBoundaryDofs);
     return 0;
 }
 
@@ -147,22 +151,25 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     double residual = 1.;
     int nlIts = 0;
     double criterionValue = 1.;
-    XMultiVector coarseResidualVec;
-    XMultiVector coarseDeltaG0;
-    XMultiVector deltaG0;
+    XMultiVectorPtr coarseResidualVec;
+    XMultiVectorPtr coarseDeltaG0;
+    BlockMultiVectorPtrFEDD deltaG0;
+    deltaG0->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(problem_->getDomain(0)->getMapRepeated(), 1)),
+                      0);
+
+    // Set solution_ to be u+P_0*g_0. g_0 is zero on the boundary, simulating P_0 locally
+    // this = alpha*xTmp + beta*this
+    problem_->solution_->update(ST::one(), *x_, ST::one());
 
     // Need to update solution_ within each iteration to assemble at u+P_0*g_0 but update only g_0
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
     // It would be more efficient to only store u on the boundary and update this value in each iteration
     while (nlIts < maxNumIts_) {
 
-        // Set solution_ to be u+P_0*g_0. g_0 is zero on the boundary, simulating P_0 locally
-        // this = alpha*xTmp + beta*this
-        problem_->solution_->update(ST::one(), *x_, ST::one());
         problem_->calculateNonLinResidualVec("reverse");
 
         // Restrict the residual to the coarse space
-        this->applyPhiT(problem_->getResidualVector(), coarseResidualVec);
+        this->applyPhiT(*problem_->getResidualVector()->getBlock(0)->getXpetraMultiVector(), *coarseResidualVec);
 
         if (criterion_ == "Residual") {
             Teuchos::Array<SC> residualArray(1);
@@ -179,8 +186,6 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
             FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
             FEDD::logGreen("Relative residual: " + std::to_string(criterionValue), this->MpiComm_);
             if (criterionValue < newtonTol_) {
-                // Set solution_ to g_0
-                problem_->solution_->update(-ST::one(), *x_, ST::one());
                 break;
             }
         }
@@ -192,26 +197,19 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         problem_->setBoundariesSystem();
 
         // Update the coarse matrix and the coarse solver (coarse factorization)
-        this->K_ = problem_->system_->getBlock(0, 0);
+        this->K_ = problem_->system_->getBlock(0, 0)->getXpetraMatrix();
         this->setUpCoarseOperator();
 
         // Apply the coarse solution
-        this->applyCoarseSolve(coarseResidualVec, coarseDeltaG0, ETransp::NO_TRANS);
+        this->applyCoarseSolve(*coarseResidualVec, *coarseDeltaG0, ETransp::NO_TRANS);
 
         // Project the coarse nonlinear correction update into the global space
-        this->applyPhi(coarseDeltaG0, deltaG0);
+        this->applyPhi(*coarseDeltaG0, *deltaG0->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
 
         // Update the current coarse nonlinear correction g_0
         // TODO: kho the signs might need adjusting
-        problem_->solution_->update(ST::one(), deltaG0, ST::one());
+        problem_->solution_->update(ST::one(), *deltaG0, ST::one());
 
-        // Changing the solution here changes the result after solveAndUpdate() since the Newton update \delta is added
-        // to the current solution
-        // Set solution_ to g_i
-        problem_->solution_->update(-ST::one(), *x_, ST::one());
-
-    // TODO: kho why is it necessary to update solution to g_i here?
-        problem_->solveAndUpdate(criterion_, criterionValue);
         nlIts++;
         if (criterion_ == "Update") {
             FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
@@ -221,6 +219,9 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
             }
         }
     }
+
+    // Set solution_ to g_i
+    problem_->solution_->update(-ST::one(), *x_, ST::one());
 
     FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
 
