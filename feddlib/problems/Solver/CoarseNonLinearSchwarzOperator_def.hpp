@@ -9,6 +9,7 @@
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <FROSch_IPOUHarmonicCoarseOperator_decl.hpp>
+#include <FROSch_Types.h>
 #include <Tacho_Driver.hpp>
 #include <Teuchos_ArrayRCPDecl.hpp>
 #include <Teuchos_BLAS_types.hpp>
@@ -17,7 +18,9 @@
 #include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_ScalarTraitsDecl.hpp>
 #include <Teuchos_TestForException.hpp>
+#include <Teuchos_VerboseObject.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
+#include <Teuchos_implicit_cast.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MapFactory_decl.hpp>
 #include <Xpetra_MatrixFactory.hpp>
@@ -73,58 +76,55 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
-
-    // Initialize the underlying IPOUHarmonicCoarseOperator object
     auto coarseParameterList = problem_->getParameterList()->sublist("Coarse Nonlinear Schwarz");
+    auto dimension = problem_->getParameterList()->sublist("Parameter").get("Dimension", 2);
+    auto dofsPerNode = problem_->getDofsPerNode(0);
+    // Initialize the underlying IPOUHarmonicCoarseOperator object
     // TODO: kho dofsMaps need to be built properly for problems with more than one dof per node
     auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(1);
     dofsMaps[0] = domainVec.at(0)->getMapRepeated()->getXpetraMap();
-    ConstXMultiVectorPtr nullSpaceBasis = null;
-    if (coarseParameterList.isParameter("Null Space")) {
-        nullSpaceBasis = ExtractPtrFromParameterList<XMultiVector>(coarseParameterList, "Null Space").getConst();
-        if (nullSpaceBasis.is_null()) {
-            RCP<Tpetra::MultiVector<SC, LO, GO, NO>> nullSpaceBasisTmp =
-                ExtractPtrFromParameterList<Tpetra::MultiVector<SC, LO, GO, NO>>(coarseParameterList, "Null Space");
 
-            RCP<const Xpetra::TpetraMultiVector<SC, LO, GO, NO>> xTpetraNullSpaceBasis(
-                new const Xpetra::TpetraMultiVector<SC, LO, GO, NO>(nullSpaceBasisTmp));
-            nullSpaceBasis = rcp_dynamic_cast<const XMultiVector>(xTpetraNullSpaceBasis);
-        }
-    }
     // Build nodeList
-
-    ConstXMultiVectorPtr nodeList = null;
-    if (coarseParameterList.isParameter("Coordinates List")) {
-        nodeList = ExtractPtrFromParameterList<XMultiVector>(coarseParameterList, "Coordinates List").getConst();
-        if (nodeList.is_null()) {
-            RCP<Tpetra::MultiVector<SC, LO, GO, NO>> coordinatesListTmp =
-                ExtractPtrFromParameterList<Tpetra::MultiVector<SC, LO, GO, NO>>(coarseParameterList,
-                                                                                 "Coordinates List");
-
-            RCP<const Xpetra::TpetraMultiVector<SC, LO, GO, NO>> xTpetraCoordinatesList(
-                new const Xpetra::TpetraMultiVector<SC, LO, GO, NO>(coordinatesListTmp));
-            nodeList = rcp_dynamic_cast<const XMultiVector>(xTpetraCoordinatesList);
+    // TODO: kho get these from the problem object
+    auto nodeListFEDD = mesh->getPointsRepeated();
+    auto nodeList = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(repeatedMap, nodeListFEDD->at(0).size());
+    for (auto i = 0; i < nodeListFEDD->size(); i++) {
+        // pointsRepeated are distributed
+        for (auto j = 0; j < nodeListFEDD->at(0).size(); j++) {
+            nodeList->getVectorNonConst(j)->replaceLocalValue(i, nodeListFEDD->at(i).at(j));
         }
     }
     // Communicate nodeList
     if (!nodeList.is_null()) {
-        FROSCH_DETAILTIMER_START_LEVELID(communicateNodeListTime, "Communicate Node List");
         ConstXMapPtr nodeListMap = nodeList->getMap();
         if (!nodeListMap->isSameAs(*repeatedMap)) {
             RCP<MultiVector<SC, LO, GO, NO>> tmpNodeList =
                 MultiVectorFactory<SC, LO, GO, NO>::Build(repeatedMap, nodeList->getNumVectors());
             RCP<Import<LO, GO, NO>> scatter = ImportFactory<LO, GO, NO>::Build(nodeListMap, repeatedMap);
             tmpNodeList->doImport(*nodeList, *scatter, INSERT);
-            nodeList = tmpNodeList.getConst();
+            nodeList = tmpNodeList;
         }
     }
-    // TODO: kho does this need to be changed?
+
+    // Build nullspace as in TwoLevelPreconditioner line 195
+    NullSpaceType nullSpaceType;
+    if (!coarseParameterList.get("Null Space Type", "Laplace").compare("Laplace")) {
+        nullSpaceType = NullSpaceType::Laplace;
+    } else if (!coarseParameterList.get("Null Space Type", "Laplace").compare("Linear Elasticity")) {
+        nullSpaceType = NullSpaceType::Elasticity;
+    } else {
+        FROSCH_ASSERT(false, "Null Space Type unknown.");
+    }
+    auto nullSpaceBasis = BuildNullSpace(dimension, nullSpaceType, repeatedMap, dofsPerNode, dofsMaps,
+                                         implicit_cast<ConstXMultiVectorPtr>(nodeList));
+
+    // TODO: kho figure out when these are needed
     GOVecPtr dirichletBoundaryDofs = null;
     // This builds the coars spaces, assembles the coarse solve map and does symbolic factorization of the coarse
     // problem
-    IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(coarseParameterList.get("Dimension", 2),
-                                                           coarseParameterList.get("DofsPerNode", 1), repeatedMap,
-                                                           dofsMaps, nullSpaceBasis, nodeList, dirichletBoundaryDofs);
+    IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(
+        dimension, dofsPerNode, repeatedMap, dofsMaps, nullSpaceBasis, implicit_cast<ConstXMultiVectorPtr>(nodeList),
+        dirichletBoundaryDofs);
     return 0;
 }
 

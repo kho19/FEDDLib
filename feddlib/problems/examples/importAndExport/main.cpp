@@ -2,6 +2,7 @@
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Matrix_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 
 #include <Teuchos_ArrayRCPDecl.hpp>
 #include <Teuchos_ArrayViewDecl.hpp>
@@ -209,8 +210,10 @@ void tpetraImportExport(int argc, char *argv[]) {
 
     // Build four importers and four exporters each from and to the different maps
     const auto uniqueToOverlappingImporter = Tpetra::Import<LO, GO, NO>(uniqueMap, overlappingMap);
+    const auto uniqueToOverlappingExporter = Tpetra::Export<LO, GO, NO>(uniqueMap, overlappingMap);
 
     const auto overlappingToUniqueExporter = Tpetra::Export<LO, GO, NO>(overlappingMap, uniqueMap, out);
+    const auto overlappingToUniqueImporter = Tpetra::Import<LO, GO, NO>(overlappingMap, uniqueMap, out);
 
     // Values for prefilling matrices
     std::vector<GO> globalColIdxVec{0, 1, 2, 3};
@@ -237,20 +240,29 @@ void tpetraImportExport(int argc, char *argv[]) {
     //  - ZERO (does not place zeros as documented. Instead seems to make the map ignore overlap)
     //  - ADD_ASSIGN (Does not work at all, throwing "Should never get here!" error)
     auto overlappingMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(overlappingMap, 4));
+    auto uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, 4));
+
+    for (int i = 0; i < 2; i++) {
+        uniqueMat->insertGlobalValues(i + 2 * myRank, globalColIdx, valTwo);
+    }
+    uniqueMat->fillComplete();
+    uniqueMat->describe(*out, Teuchos::VERB_EXTREME);
+
+    overlappingMat->doExport(*uniqueMat, uniqueToOverlappingExporter, Tpetra::INSERT);
+    overlappingMat->fillComplete();
+    overlappingMat->describe(*out, Teuchos::VERB_EXTREME);
+
     /* for (int i = 0; i < 3; i++) { */
     /*     overlappingMat->insertGlobalValues(i + myRank, globalColIdx(), valOne()); */
     /* } */
-    /**/
-    auto uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, 4));
-    /* for (int i = 0; i < 2; i++) { */
-    /*     uniqueMat->insertGlobalValues(i + 2 * myRank, globalColIdx, valTwo); */
-    /* } */
-    /* uniqueMat->fillComplete(); */
-    /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
-    /**/
-    /* overlappingMat->doImport(*uniqueMat, uniqueToOverlappingImporter, Tpetra::ADD); */
     /* overlappingMat->fillComplete(); */
+    /* logGreen("Overlapping matrix", comm); */
     /* overlappingMat->describe(*out, Teuchos::VERB_EXTREME); */
+    /**/
+    /* uniqueMat->doImport(*overlappingMat, uniqueToOverlappingExporter, Tpetra::INSERT); */
+    /* uniqueMat->fillComplete(); */
+    /* logGreen("Unique matrix", comm); */
+    /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
 
     // ----------------------- Test 2: insertGlobalValues() test -----------------------
     // Take care when using insertGlobalValues() on overlapping matrices. Values on nonowned rows are communicated
@@ -267,28 +279,28 @@ void tpetraImportExport(int argc, char *argv[]) {
 
     // ----------------------- Test 3: Export from overlapping to unique distributions -----------------------
     // ADD and INSERT also behave the same. Probably meant to differentiate behaviour of a different operation.
-    overlappingMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(overlappingMap, columnMap, 4));
-    for (int i = 0; i < 3; i++) {
-        overlappingMat->insertLocalValues(i, localColIdx, valOne);
-    }
-    overlappingMat->fillComplete();
+    /* overlappingMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(overlappingMap, columnMap, 4)); */
+    /* for (int i = 0; i < 3; i++) { */
+    /*     overlappingMat->insertLocalValues(i, localColIdx, valOne); */
+    /* } */
+    /* overlappingMat->fillComplete(); */
     /* overlappingMat->describe(*out, Teuchos::VERB_EXTREME); */
-
-    uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, columnMap, 4));
-    for (int i = 0; i < 2; i++) {
-        uniqueMat->insertLocalValues(i, localColIdx, valTwo);
-    }
+    /**/
+    /* uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, columnMap, 4)); */
+    /* for (int i = 0; i < 2; i++) { */
+    /*     uniqueMat->insertLocalValues(i, localColIdx, valTwo); */
+    /* } */
     // The following code causes undefined behaviour unless "Optimize Storage" is set to false. This cause the storage
     // pattern to remain mutable for later data entry.
-    RCP<ParameterList> params = parameterList();
-    params->set("Optimize Storage", false);
-
-    uniqueMat->fillComplete(params);
-    uniqueMat->describe(*out, Teuchos::VERB_EXTREME);
-    uniqueMat->resumeFill();
-    uniqueMat->doExport(*overlappingMat, overlappingToUniqueExporter, Tpetra::ADD);
-    uniqueMat->fillComplete();
-    uniqueMat->describe(*out, Teuchos::VERB_EXTREME);
+    /* RCP<ParameterList> params = parameterList(); */
+    /* params->set("Optimize Storage", false); */
+    /**/
+    /* uniqueMat->fillComplete(params); */
+    /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
+    /* uniqueMat->resumeFill(); */
+    /* uniqueMat->doExport(*overlappingMat, overlappingToUniqueExporter, Tpetra::ADD); */
+    /* uniqueMat->fillComplete(); */
+    /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
 
     // -------------- Test 4: Modify values in recieving matrix and then do reverse operation ------------------
     // Use the matrices from Test 3

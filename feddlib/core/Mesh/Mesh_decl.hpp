@@ -111,7 +111,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     int getOrderElement();
 
-    CommConstPtrConst_Type getComm() { return comm_; };
+    CommConstPtrConst_Type getComm() const { return comm_; };
 
     int setStructuredMeshFlags(int flags) { return 0; };
 
