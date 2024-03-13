@@ -1,17 +1,13 @@
-#include "feddlib/core/FE/Domain.hpp"
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
-#include "feddlib/core/General/ExporterParaView.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMultiVector_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Matrix_decl.hpp"
-#include "feddlib/core/LinearAlgebra/MultiVector.hpp"
-#include "feddlib/core/Mesh/MeshPartitioner.hpp"
+#include "feddlib/core/Mesh/MeshPartitioner_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/CoarseNonLinearSchwarzOperator_decl.hpp"
-#include "feddlib/problems/Solver/NonLinearSchwarzOperator.hpp"
-#include "feddlib/problems/Solver/SimpleOverlappingOperator.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/Solver/SimpleOverlappingOperator_decl.hpp"
-#include "feddlib/problems/specific/NonLinLaplace.hpp"
+#include "feddlib/problems/specific/NonLinLaplace_decl.hpp"
 #include <FROSch_AlgebraicOverlappingOperator_decl.hpp>
 #include <FROSch_ExtractSubmatrices_decl.hpp>
 #include <FROSch_OverlappingOperator_decl.hpp>
@@ -36,8 +32,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-#include "Epetra_MpiComm.h"
 
 void zeroDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = 0.; }
 
@@ -111,8 +105,11 @@ int main(int argc, char *argv[]) {
     // Set default values for command line parameters
     // ########################
 
-    const bool debug = false;
-    if (comm->getRank() == 0 && debug) {
+    bool debug = false;
+    if (argc > 1) {
+        debug = true;
+    }
+    if (comm->getRank() == 1 && debug) {
         waitForGdbAttach<LO>();
     }
     comm->barrier();
@@ -215,17 +212,19 @@ int main(int argc, char *argv[]) {
 // Solve the problem
 void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
+    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
     logGreen("Commencing nonlinear Schwarz solve", problem->getComm());
 
     // Define nonlinear Schwarz operator
     auto domainVec = problem->getDomainVector();
     auto mpiComm = domainVec.at(0)->getComm();
     auto serialComm = Teuchos::createSerialComm<LO>();
-    // Nonlinear Schwarz operator needs the system matrix internally
-    auto dummyMat = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap());
-    dummyMat->fillComplete();
 
-    problem->system_->addBlock(Teuchos::rcp(new FEDD::Matrix<SC, LO, GO, NO>(dummyMat)), 0, 0);
+    // The coarse space is built using this Jacobian
+    // TODO: kho should I put "more effort" into making this coarse space?
+    problem->assemble("Newton");
+    problem->setBoundariesSystem();
+
     auto nonLinearSchwarzOp = Teuchos::rcp(
         new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(serialComm, problem, problem->getParameterList()));
     nonLinearSchwarzOp->initialize();
@@ -242,13 +241,14 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     // FROSch overlapping operator
     /* Teuchos::RCP<FROSch::OverlappingOperator<SC, LO, GO, NO>> froschOverlappingOperator; */
-    auto simpleOverlappingOperator =
-        Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(dummyMat, problem->getParameterList()));
+    auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
+        problem->system_->getBlock(0, 0)->getXpetraMatrix(), problem->getParameterList()));
 
     // ################ Begin test coarse operator ###################
     auto coarseOperator =
         Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(problem, problem->getParameterList()));
     coarseOperator->initialize();
+    coarseOperator->compute();
     // ################ End test coarse operator ###################
 
     // Init block vectors for nonlinear residual and outer Newton update
@@ -287,8 +287,7 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     auto relativeResidual = residual / residual0;
 
     // Outer Newton iterations
-    while (false) {
-        /* while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) { */
+    while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
         logGreen("Starting outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
         logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
 
@@ -339,12 +338,13 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         testIn->putScalar(1);
         auto testOut = rcp(new BlockMultiVector<SC, LO, GO, NO>(problem->system_->getMap(), 1));
 
-        coarseOperator->compute();
+        logGreen("testIn", mpiComm);
+        testIn->print();
         coarseOperator->apply(testIn, testOut);
         logGreen("testOut", mpiComm);
         testOut->print();
+        return;
         // ################ End test coarse operator ###################
-
         // Convert SchwarzOperator to Thyra::LinearOpBase
         auto xpetraOverlappingOperator = rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleOverlappingOperator);
 

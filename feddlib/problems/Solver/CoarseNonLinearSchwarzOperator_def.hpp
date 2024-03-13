@@ -2,10 +2,7 @@
 #define COARSENONLINEARSCHWARZOPERATOR_DEF_HPP
 
 #include "CoarseNonLinearSchwarzOperator_decl.hpp"
-#include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMatrix_decl.hpp"
-#include "feddlib/core/LinearAlgebra/Map_decl.hpp"
-#include "feddlib/core/LinearAlgebra/Matrix_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <FROSch_IPOUHarmonicCoarseOperator_decl.hpp>
@@ -27,7 +24,6 @@
 #include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 /*!
  Implementation of CoarseNonLinearSchwarzOperator
@@ -49,7 +45,10 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(N
                                                                                ParameterListPtr parameterList)
     : IPOUHarmonicCoarseOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
       problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, newtonTol_{}, maxNumIts_{}, criterion_{""} {
+      y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      coarseJacobian_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, newtonTol_{}, maxNumIts_{},
+      criterion_{""}, solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -92,17 +91,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         // pointsRepeated are distributed
         for (auto j = 0; j < nodeListFEDD->at(0).size(); j++) {
             nodeList->getVectorNonConst(j)->replaceLocalValue(i, nodeListFEDD->at(i).at(j));
-        }
-    }
-    // Communicate nodeList
-    if (!nodeList.is_null()) {
-        ConstXMapPtr nodeListMap = nodeList->getMap();
-        if (!nodeListMap->isSameAs(*repeatedMap)) {
-            RCP<MultiVector<SC, LO, GO, NO>> tmpNodeList =
-                MultiVectorFactory<SC, LO, GO, NO>::Build(repeatedMap, nodeList->getNumVectors());
-            RCP<Import<LO, GO, NO>> scatter = ImportFactory<LO, GO, NO>::Build(nodeListMap, repeatedMap);
-            tmpNodeList->doImport(*nodeList, *scatter, INSERT);
-            nodeList = tmpNodeList;
         }
     }
 
@@ -151,11 +139,13 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     double residual = 1.;
     int nlIts = 0;
     double criterionValue = 1.;
-    XMultiVectorPtr coarseResidualVec;
-    XMultiVectorPtr coarseDeltaG0;
-    BlockMultiVectorPtrFEDD deltaG0;
-    deltaG0->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(problem_->getDomain(0)->getMapRepeated(), 1)),
-                      0);
+    auto coarseResidualVec =
+        Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
+    auto coarseDeltaG0 =
+        Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
+    auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(problem_->getDomain(0)->getMapUnique(), 1));
+    auto deltaG0 = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    deltaG0->addBlock(tempMV, 0);
 
     // Set solution_ to be u+P_0*g_0. g_0 is zero on the boundary, simulating P_0 locally
     // this = alpha*xTmp + beta*this
@@ -167,10 +157,13 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     while (nlIts < maxNumIts_) {
 
         problem_->calculateNonLinResidualVec("reverse");
+        auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
 
         // Restrict the residual to the coarse space
         this->applyPhiT(*problem_->getResidualVector()->getBlock(0)->getXpetraMultiVector(), *coarseResidualVec);
 
+        FEDD::logGreen("coarseResidualVec", this->MpiComm_);
+        coarseResidualVec->describe(*out, VERB_EXTREME);
         if (criterion_ == "Residual") {
             Teuchos::Array<SC> residualArray(1);
             coarseResidualVec->norm2(residualArray());
@@ -183,31 +176,62 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
 
         if (criterion_ == "Residual") {
             criterionValue = residual / residual0;
-            FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logGreen("Relative residual: " + std::to_string(criterionValue), this->MpiComm_);
+            /* FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_); */
+            /* FEDD::logGreen("Relative residual: " + std::to_string(criterionValue), this->MpiComm_); */
+            FEDD::logGreenOnRank("Relative residual rank zero: " + std::to_string(criterionValue), 0, this->MpiComm_);
+            FEDD::logGreenOnRank("Relative residual rank one: " + std::to_string(criterionValue), 1, this->MpiComm_);
+
             if (criterionValue < newtonTol_) {
+                FEDD::logGreenOnRank("Quitting Newton on rank zero", 0, this->MpiComm_);
+                FEDD::logGreenOnRank("Quitting Newton on rank one", 1, this->MpiComm_);
                 break;
             }
         }
-
+        FEDD::logGreenOnRank("Rank zero here assemble", 0, this->MpiComm_);
+        FEDD::logGreenOnRank("Rank one here assemble", 1, this->MpiComm_);
+        this->MpiComm_->barrier();
+        this->MpiComm_->barrier();
         problem_->assemble("Newton");
 
         // After this rows corresponding to Dirichlet nodes are unity and residualVec_ = 0
         // TODO: kho is this the right way to deal with boundary conditions?
+        FEDD::logGreenOnRank("Rank zero here setBoundariesSystem", 0, this->MpiComm_);
+        FEDD::logGreenOnRank("Rank one here setBoundariesSystem", 1, this->MpiComm_);
+        this->MpiComm_->barrier();
+        this->MpiComm_->barrier();
         problem_->setBoundariesSystem();
 
         // Update the coarse matrix and the coarse solver (coarse factorization)
+        FEDD::logGreenOnRank("Rank zero here setup coarse operator", 0, this->MpiComm_);
+        FEDD::logGreenOnRank("Rank one here setup coarse operator", 1, this->MpiComm_);
+
+        this->MpiComm_->barrier();
+        this->MpiComm_->barrier();
         this->K_ = problem_->system_->getBlock(0, 0)->getXpetraMatrix();
         this->setUpCoarseOperator();
 
+        FEDD::logGreenOnRank("Rank zero here apply coarse solve", 0, this->MpiComm_);
+        FEDD::logGreenOnRank("Rank one here apply coarse solve", 1, this->MpiComm_);
         // Apply the coarse solution
+        this->MpiComm_->barrier();
+        this->MpiComm_->barrier();
         this->applyCoarseSolve(*coarseResidualVec, *coarseDeltaG0, ETransp::NO_TRANS);
+        // Required because applyCoarseSolve switches out the map without restoring initial map. BAD!!
+        coarseResidualVec->replaceMap(this->GatheringMaps_[this->GatheringMaps_.size() - 1]);
 
         // Project the coarse nonlinear correction update into the global space
+        FEDD::logGreenOnRank("Rank zero here applyPhi", 0, this->MpiComm_);
+        FEDD::logGreenOnRank("Rank one here applyPhi", 1, this->MpiComm_);
+        this->MpiComm_->barrier();
+        this->MpiComm_->barrier();
         this->applyPhi(*coarseDeltaG0, *deltaG0->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
 
         // Update the current coarse nonlinear correction g_0
+        FEDD::logGreenOnRank("Rank zero here update", 0, this->MpiComm_);
+        FEDD::logGreenOnRank("Rank one here update", 1, this->MpiComm_);
         // TODO: kho the signs might need adjusting
+        this->MpiComm_->barrier();
+        this->MpiComm_->barrier();
         problem_->solution_->update(ST::one(), *deltaG0, ST::one());
 
         nlIts++;
@@ -215,12 +239,17 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
             FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
             FEDD::logGreen("Residual of update: " + std::to_string(criterionValue), this->MpiComm_);
             if (criterionValue < newtonTol_) {
+                FEDD::logGreenOnRank("exiting Newton", 1, this->MpiComm_);
                 break;
             }
         }
     }
 
+    FEDD::logGreenOnRank("Rank zero here after while", 0, this->MpiComm_);
+    FEDD::logGreenOnRank("Rank one here after while", 1, this->MpiComm_);
     // Set solution_ to g_i
+    this->MpiComm_->barrier();
+    this->MpiComm_->barrier();
     problem_->solution_->update(-ST::one(), *x_, ST::one());
 
     FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
