@@ -60,6 +60,25 @@ exporter_()
 }
 
 template <class SC, class LO, class GO, class NO>
+MultiVector<SC,LO,GO,NO>::MultiVector( XpetraMultiVectorConstPtr_Type& xpetraMVConstPtrIn ):
+multiVector_(),
+map_(),
+importer_(),
+exporter_()
+{
+    multiVector_ = Xpetra::MultiVectorFactory<SC,LO,GO,NO>::Build( xpetraMVConstPtrIn->getMap(), xpetraMVConstPtrIn->getNumVectors() );
+    map_.reset( new Map_Type( xpetraMVConstPtrIn->getMap() ) );
+    for (UN j=0; j<this->getNumVectors(); j++) {
+        Teuchos::ArrayRCP< const SC > valuesIn = xpetraMVConstPtrIn->getData(j);
+        Teuchos::ArrayRCP< SC > valuesThis = this->getDataNonConst(j);
+        for (UN i=0; i<valuesThis.size(); i++)//can this be quicker?
+            valuesThis[i] = valuesIn[i];
+    }
+
+}
+
+
+template <class SC, class LO, class GO, class NO>
 MultiVector<SC,LO,GO,NO>::MultiVector( MultiVectorConstPtr_Type mvIn ):
 multiVector_( ),
 map_(),

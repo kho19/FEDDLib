@@ -121,9 +121,8 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
                                                            SC alpha, SC beta) {
 
     // TODO: kho how do we have to deal with boundary conditions here? What are the dirichletBoundaryDofs used for?
-
-    /* x_->getBlockNonConst(0)->importFromVector(x->getBlock(0), true, "Insert", "Forward"); */
-    // TODO: kho is it okay to assign like this? importing should not be necessary here
+    TEUCHOS_TEST_FOR_EXCEPTION(x->getBlock(0)->getMapXpetra()->isSameAs(*this->getDomainMap()), std::runtime_error,
+                               "input map does not correspond to domain map of nonlinear operator");
     x_ = x;
 
     // Save problem state
@@ -235,11 +234,27 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
 }
 
 template <class SC, class LO, class GO, class NO>
+void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, SC alpha, SC beta) {
+    // This version of apply does not make sense for nonlinear operators
+    // Wraps another apply() method for compatibility
+    auto feddX = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    auto feddY = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    // non owning rcp objects since they should not destroy x, y when going out of scope
+    auto rcpX = Teuchos::rcp(&x, false);
+    auto rcpY = Teuchos::rcp(&y, false);
+
+    // TODO: kho this needs to be changed since the input vector is copied here (const)
+    feddX->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpX)), 0);
+    feddY->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpY)), 0);
+    apply(feddX, feddY, alpha, beta);
+}
+
+template <class SC, class LO, class GO, class NO>
 void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y,
                                                            bool usePreconditionerOnly, ETransp mode, SC alpha,
                                                            SC beta) const {
     TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
-                               "This version of apply does not make sense in the context of nonlinear operators.");
+                               "This apply() overload should not be used with nonlinear operators");
 }
 
 template <class SC, class LO, class GO, class NO>

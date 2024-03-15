@@ -50,6 +50,10 @@ ADD_SUBDIRECTORY(Solver)
 SET(HEADERS ${HEADERS} ${Solver_HEADERS})
 SET(SOURCES ${SOURCES} ${Solver_SOURCES})
 
+ADD_SUBDIRECTORY(Solver/NonLinearSchwarzSolver)
+SET(HEADERS ${HEADERS} ${nonlinear_schwarz_HEADERS})
+SET(SOURCES ${SOURCES} ${nonlinear_schwarz_SOURCES})
+
 ADD_SUBDIRECTORY(specific)
 SET(HEADERS ${HEADERS} ${problems_specific_HEADERS})
 SET(SOURCES ${SOURCES} ${problems_specific_SOURCES})

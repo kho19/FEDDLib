@@ -75,6 +75,8 @@ public:
 
     MultiVector( XpetraMultiVectorPtr_Type& xpetraMVPtrIn );
 
+    MultiVector(XpetraMultiVectorConstPtr_Type &xpetraMVConstPtrIn);
+
     MultiVector( MultiVectorConstPtr_Type mvIn );
 
     ~MultiVector();

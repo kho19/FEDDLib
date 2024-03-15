@@ -1,7 +1,6 @@
 #ifndef SimpleOVERLAPPINGOPERATOR_DECL_HPP
 #define SimpleOVERLAPPINGOPERATOR_DECL_HPP
 
-#include "feddlib/core/FE/FE_decl.hpp"
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMatrix_decl.hpp"

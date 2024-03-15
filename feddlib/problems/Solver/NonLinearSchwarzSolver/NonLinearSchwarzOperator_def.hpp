@@ -22,7 +22,6 @@
 #include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 /*!
  Implementation of NonLinearSchwarzOperator
@@ -101,18 +100,6 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         combinationMode_ = CombinationMode::Full;
     }
 
-    // Store all distributed properties that need replacing for local computations
-    mapRepeatedMpiTmp_ = mesh->getMapRepeated()->getXpetraMap();
-    mapUniqueMpiTmp_ = mesh->getMapUnique()->getXpetraMap();
-    pointsRepTmp_ = mesh->getPointsRepeated();
-    pointsUniTmp_ = mesh->getPointsUnique();
-    bcFlagRepTmp_ = mesh->getBCFlagRepeated();
-    bcFlagUniTmp_ = mesh->getBCFlagUnique();
-    elementsCTmp_ = mesh->getElementsC();
-    solutionTmp_ = problem_->getSolution();
-    systemTmp_ = problem_->system_;
-    feFactoryTmp_ = problem_->feFactory_;
-
     mapOverlappingGhostsLocal_ = Xpetra::MapFactory<LO, GO, NO>::Build(
         mesh->getMapOverlappingGhosts()->getXpetraMap()->lib(),
         mesh->getMapOverlappingGhosts()->getXpetraMap()->getLocalNumElements(), 0, this->SerialComm_);
@@ -131,12 +118,32 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
 
 template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<SC, LO, GO, NO>::compute() {
 
-    TEUCHOS_TEST_FOR_EXCEPTION(x_.is_null(), std::runtime_error,
-                               "The current value of the nonlinear operator requires "
-                               "an input to be computed.");
+    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
+                               "The nonlinear operator does not implement compute(). Simply call apply() directly.");
+    return 0;
+}
+
+template <class SC, class LO, class GO, class NO>
+void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y,
+                                                     SC alpha, SC beta) {
+
+    // Save the current input
+    x_->getBlockNonConst(0)->importFromVector(x->getBlock(0), true, "Insert", "Forward");
 
     auto domainVec = problem_->getDomainVector();
     auto mesh = domainVec.at(0)->getMesh();
+
+    // Store all distributed properties that need replacing for local computations
+    mapRepeatedMpiTmp_ = mesh->getMapRepeated()->getXpetraMap();
+    mapUniqueMpiTmp_ = mesh->getMapUnique()->getXpetraMap();
+    pointsRepTmp_ = mesh->getPointsRepeated();
+    pointsUniTmp_ = mesh->getPointsUnique();
+    bcFlagRepTmp_ = mesh->getBCFlagRepeated();
+    bcFlagUniTmp_ = mesh->getBCFlagUnique();
+    elementsCTmp_ = mesh->getElementsC();
+    solutionTmp_ = problem_->getSolution();
+    systemTmp_ = problem_->system_;
+    feFactoryTmp_ = problem_->feFactory_;
 
     // ================= Replace shared objects ===============================
     // Done to "trick" FEDD::Problem assembly routines to assemble locally on the overlapping subdomain
@@ -306,26 +313,31 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     x_->getBlockNonConst(0)->replaceMap(
         Teuchos::rcp(new FEDD::Map<LO, GO, NO>(mesh->getMapOverlappingGhosts()->getXpetraMap())));
 
-    return 0;
+    // y = alpha*f(x) + beta*y
+    y->getBlockNonConst(0)->update(alpha, y_->getBlock(0), beta);
 }
 
 template <class SC, class LO, class GO, class NO>
-void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y,
-                                                     SC alpha, SC beta) {
+void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, SC alpha, SC beta) {
+    // This version of apply does not make sense for nonlinear operators
+    // Wraps another apply() method for compatibility
+    auto feddX = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    auto feddY = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
+    // non owning rcp objects since they should not destroy x, y when going out of scope
+    auto rcpX = Teuchos::rcp(&x, false);
+    auto rcpY = Teuchos::rcp(&y, false);
 
-    // Save the current input
-    x_->getBlockNonConst(0)->importFromVector(x->getBlock(0), true, "Insert", "Forward");
-    // Compute the value of the nonlinear operator
-    this->compute();
-    // y = alpha*f(x) + beta*y
-    y->getBlockNonConst(0)->update(alpha, y_->getBlock(0), beta);
+    // TODO: kho this needs to be changed since the input vector is copied here (const)
+    feddX->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpX)), 0);
+    feddY->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpY)), 0);
+    apply(feddX, feddY, alpha, beta);
 }
 
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly,
                                                      ETransp mode, SC alpha, SC beta) const {
     TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
-                               "This version of apply does not make sense in the context of nonlinear operators.");
+                               "This apply() overload should not be used with nonlinear operators");
 }
 
 template <class SC, class LO, class GO, class NO>

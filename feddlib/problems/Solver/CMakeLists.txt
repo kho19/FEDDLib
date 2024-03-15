@@ -1,19 +1,10 @@
-SET(Solver_HEADERS
-  Solver/SimpleOverlappingOperator.hpp
-  Solver/SimpleOverlappingOperator_decl.hpp
-  Solver/SimpleOverlappingOperator_def.hpp
+set(Solver_HEADERS
     Solver/DAESolverInTime_decl.hpp
     Solver/DAESolverInTime_def.hpp
     Solver/DAESolverInTime.hpp
-	Solver/LinearSolver_decl.hpp
-	Solver/LinearSolver_def.hpp
-	Solver/LinearSolver.hpp
-  Solver/NonLinearSchwarzOperator.hpp
-  Solver/NonLinearSchwarzOperator_decl.hpp
-  Solver/NonLinearSchwarzOperator_def.hpp
-  Solver/CoarseNonLinearSchwarzOperator.hpp
-  Solver/CoarseNonLinearSchwarzOperator_decl.hpp
-  Solver/CoarseNonLinearSchwarzOperator_def.hpp
+    Solver/LinearSolver_decl.hpp
+    Solver/LinearSolver_def.hpp
+    Solver/LinearSolver.hpp
     Solver/NonLinearSolver.hpp
     Solver/NonLinearSolver_decl.hpp
     Solver/NonLinearSolver_def.hpp
@@ -30,31 +21,26 @@ SET(Solver_HEADERS
     Solver/PrecOpFaCSI_decl.hpp
     Solver/PrecOpFaCSI_def.hpp
     Solver/TimeSteppingTools.hpp
-CACHE INTERNAL "")
+    CACHE INTERNAL "")
 
-SET(Solver_SOURCES
-  Solver/SimpleOverlappingOperator.cpp
-	Solver/DAESolverInTime.cpp
+set(Solver_SOURCES
+    Solver/DAESolverInTime.cpp
     Solver/LinearSolver.cpp
-    Solver/NonLinearSchwarzOperator.cpp
-    Solver/CoarseNonLinearSchwarzOperator.cpp
     Solver/NonLinearSolver.cpp
     Solver/Preconditioner.cpp
     Solver/PreconditionerOperator.cpp
     Solver/PrecBlock2x2.cpp
     Solver/PrecOpFaCSI.cpp
-	Solver/TimeSteppingTools.cpp
-CACHE INTERNAL "")
+    Solver/TimeSteppingTools.cpp
+    CACHE INTERNAL "")
 
+set(LOCAL_HEADERS)
+foreach(INC ${Solver_HEADERS})
+  string(REPLACE "Solver/" "" LOCAL_INC ${INC})
+  set(LOCAL_HEADERS ${LOCAL_HEADERS} ${LOCAL_INC})
+endforeach()
 
-SET(LOCAL_HEADERS)
-FOREACH(INC ${Solver_HEADERS})
-  STRING(REPLACE "Solver/" "" LOCAL_INC ${INC})
-  SET(LOCAL_HEADERS ${LOCAL_HEADERS} ${LOCAL_INC})
-ENDFOREACH()
-
-INSTALL(
+install(
   FILES ${LOCAL_HEADERS}
   DESTINATION "${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}/feddlib/problems/Solver"
-  COMPONENT ${PACKAGE_NAME}
-)
+  COMPONENT ${PACKAGE_NAME})

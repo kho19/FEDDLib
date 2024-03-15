@@ -1,7 +1,6 @@
 #ifndef NonLinLaplace_def_hpp
 #define NonLinLaplace_def_hpp
 #include "NonLinLaplace_decl.hpp"
-#include "feddlib/core/Utils/FEDDUtils.hpp"
 /*!
  Definition of NonLinLaplace
 
