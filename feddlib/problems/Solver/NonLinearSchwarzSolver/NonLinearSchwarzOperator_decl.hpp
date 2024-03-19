@@ -8,6 +8,7 @@
 #include "feddlib/core/LinearAlgebra/BlockMultiVector_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/Mesh/Mesh_decl.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearOperator_decl.hpp"
 #include "feddlib/problems/abstract/NonLinearProblem_decl.hpp"
 #include <FROSch_SchwarzOperator_def.hpp>
 #include <Teuchos_Describable.hpp>
@@ -32,7 +33,8 @@ namespace FROSch {
 enum class CombinationMode { Averaging, Full, Restricted };
 
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
-class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
+class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>,
+                                 public NonLinearOperator<SC, LO, GO, NO> {
 
   protected:
     using CommPtr = typename SchwarzOperator<SC, LO, GO, NO>::CommPtr;
@@ -102,23 +104,21 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO> {
 
     ~NonLinearSchwarzOperator() = default;
 
-    int initialize();
+    int initialize() override;
 
-    int compute();
+    int compute() override;
 
-    void apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y, SC alpha = ScalarTraits<SC>::one(),
-               SC beta = ScalarTraits<SC>::zero());
+    void apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y, SC alpha = ST::one(), SC beta = ST::zero());
 
-    void apply(const XMultiVector &x, XMultiVector &y, SC alpha = ScalarTraits<SC>::one(),
-               SC beta = ScalarTraits<SC>::zero());
+    void apply(const XMultiVector &x, XMultiVector &y, SC alpha = ST::one(), SC beta = ST::zero()) override;
 
     // This apply method must be overridden but does not make sense in the context of nonlinear operators
     void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
-               SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const;
+               SC alpha = ST::one(), SC beta = ST::zero()) const override;
 
-    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const;
+    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
 
-    string description() const;
+    string description() const override;
 
     BlockMatrixPtrFEDD getLocalJacobianGhosts() const;
 

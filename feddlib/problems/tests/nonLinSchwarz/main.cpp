@@ -6,6 +6,7 @@
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/CoarseNonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator_decl.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSumOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator_decl.hpp"
 #include "feddlib/problems/specific/NonLinLaplace_decl.hpp"
 #include <FROSch_AlgebraicOverlappingOperator_decl.hpp>
@@ -246,9 +247,10 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(problem, problem->getParameterList()));
     coarseOperator->initialize();
     coarseOperator->compute();
-    /* auto rhsSumOperator = Teuchos::rcp(new FROSch::SumOperator<SC, LO, GO, NO>(mpiComm)); */
-    /* rhsSumOperator->addOperator(nonLinearSchwarzOp); */
-    /* rhsSumOperator->addOperator(coarseOperator); */
+    Teuchos::RCP<FROSch::NonLinearSumOperator<SC, LO, GO, NO>> rhsSumOperator =
+        Teuchos::rcp(new FROSch::NonLinearSumOperator<SC, LO, GO, NO>(mpiComm));
+    rhsSumOperator->addOperator(nonLinearSchwarzOp);
+    rhsSumOperator->addOperator(coarseOperator);
 
     // TODO: kho the simpleCoarseOperator goes here
 
@@ -294,7 +296,7 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     auto testIn = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap(), 1);
     testIn->putScalar(1);
     auto testOut = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(domainVec.at(0)->getMapUnique()->getXpetraMap(), 1);
-    /* rhsSumOperator->apply(*testIn, *testOut, true); */
+    rhsSumOperator->apply(*testIn, *testOut);
     logGreen("testOut", mpiComm);
     testOut->describe(*out, Teuchos::VERB_EXTREME);
     // ########## end debug ##############

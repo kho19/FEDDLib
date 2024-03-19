@@ -121,7 +121,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
                                                            SC alpha, SC beta) {
 
     // TODO: kho how do we have to deal with boundary conditions here? What are the dirichletBoundaryDofs used for?
-    TEUCHOS_TEST_FOR_EXCEPTION(x->getBlock(0)->getMapXpetra()->isSameAs(*this->getDomainMap()), std::runtime_error,
+    TEUCHOS_TEST_FOR_EXCEPTION(!x->getBlock(0)->getMapXpetra()->isSameAs(*this->getDomainMap()), std::runtime_error,
                                "input map does not correspond to domain map of nonlinear operator");
     x_ = x;
 

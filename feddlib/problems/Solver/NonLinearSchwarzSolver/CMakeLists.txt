@@ -11,6 +11,9 @@ set(nonlinear_schwarz_HEADERS
     Solver/NonLinearSchwarzSolver/NonLinearSumOperator.hpp
     Solver/NonLinearSchwarzSolver/NonLinearSumOperator_decl.hpp
     Solver/NonLinearSchwarzSolver/NonLinearSumOperator_def.hpp
+    Solver/NonLinearSchwarzSolver/NonLinearOperator.hpp
+    Solver/NonLinearSchwarzSolver/NonLinearOperator_decl.hpp
+    Solver/NonLinearSchwarzSolver/NonLinearOperator_def.hpp
     CACHE INTERNAL "")
 
 set(nonlinear_schwarz_SOURCES
@@ -18,6 +21,7 @@ set(nonlinear_schwarz_SOURCES
     Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator.cpp
     Solver/NonLinearSchwarzSolver/CoarseNonLinearSchwarzOperator.cpp
     Solver/NonLinearSchwarzSolver/NonLinearSumOperator.cpp
+    Solver/NonLinearSchwarzSolver/NonLinearOperator.cpp
     CACHE INTERNAL "")
 
 set(LOCAL_HEADERS)

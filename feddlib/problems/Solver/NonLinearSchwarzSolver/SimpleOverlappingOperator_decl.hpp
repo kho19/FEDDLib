@@ -117,10 +117,7 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
                SC beta = ScalarTraits<SC>::zero()) const override;
 
     void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
-               SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const override {
-        TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
-                                   "This version of apply is not implemented for the simple overlapping operator");
-    };
+               SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const override;
 
     void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
 

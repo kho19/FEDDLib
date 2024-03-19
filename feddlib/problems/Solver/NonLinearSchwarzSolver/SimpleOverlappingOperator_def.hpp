@@ -173,6 +173,13 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     y.update(alpha, *y_unique_, beta);
 }
 
+template <class SC, class LO, class GO, class NO>
+void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y,
+                                                      bool usePreconditionerOnly, ETransp mode, SC alpha,
+                                                      SC beta) const {
+    apply(x, y, mode, alpha, beta);
+}
+
 // TODO: a lot of this implementation could be moved to FROSch
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::describe(FancyOStream &out, const EVerbosityLevel verbLevel) const {
