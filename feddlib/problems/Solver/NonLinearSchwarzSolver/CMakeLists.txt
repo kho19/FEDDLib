@@ -2,6 +2,9 @@ set(nonlinear_schwarz_HEADERS
     Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator.hpp
     Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator_decl.hpp
     Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator_def.hpp
+    Solver/NonLinearSchwarzSolver/SimpleCoarseOperator.hpp
+    Solver/NonLinearSchwarzSolver/SimpleCoarseOperator_decl.hpp
+    Solver/NonLinearSchwarzSolver/SimpleCoarseOperator_def.hpp
     Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator.hpp
     Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator_decl.hpp
     Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator_def.hpp
@@ -18,6 +21,7 @@ set(nonlinear_schwarz_HEADERS
 
 set(nonlinear_schwarz_SOURCES
     Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator.cpp
+    Solver/NonLinearSchwarzSolver/SimpleCoarseOperator.cpp
     Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator.cpp
     Solver/NonLinearSchwarzSolver/CoarseNonLinearSchwarzOperator.cpp
     Solver/NonLinearSchwarzSolver/NonLinearSumOperator.cpp

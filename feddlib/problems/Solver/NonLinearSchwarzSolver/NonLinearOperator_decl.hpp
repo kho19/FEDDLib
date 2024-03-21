@@ -6,7 +6,10 @@
 #include <FROSch_SchwarzOperator_def.hpp>
 
 /*!
- Declration of a nonlinear operator
+ Declaration of a nonlinear operator
+ Simple interface that nonlinear operators implement, providing a non-const apply() function. Originally required in the
+ NonLinearSumOperator which could not work with the stored array of Schwarz operators since these only have const
+ apply() functions. This is a workaround to deal with FROSch_SchwarzOperator representing linear operators.
 
  @brief  Nonlinear Operator
  @author Kyrill Ho

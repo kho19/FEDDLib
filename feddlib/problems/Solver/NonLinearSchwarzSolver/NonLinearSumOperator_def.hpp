@@ -23,17 +23,17 @@ NonLinearSumOperator<SC, LO, GO, NO>::NonLinearSumOperator(CommPtr comm) : SumOp
 // Y = alpha * A^mode * X + beta * Y
 template <class SC, class LO, class GO, class NO>
 void NonLinearSumOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, SC alpha, SC beta) {
-    if (this->OperatorVector_.size() > 0) {
+    if (this->NonLinearOperatorVector_.size() > 0) {
         if (this->XTmp_.is_null())
             this->XTmp_ = MultiVectorFactory<SC, LO, GO, NO>::Build(x.getMap(), x.getNumVectors());
         *this->XTmp_ = x; // Incase x=y
         bool firstOp = true;
-        for (UN i = 0; i < this->OperatorVector_.size(); i++) {
-            if (this->EnableOperators_[i]) {
+        for (UN i = 0; i < this->NonLinearOperatorVector_.size(); i++) {
+            if (this->EnableNonLinearOperators_[i]) {
                 // We can be sure that all operators are of type NonLinearOperator since this is checked when adding
                 // We need to dynamic_cast here anyway because NonLinearOperator and SchwarzOperator are not related
                 // This could be changed by modifying FROSch to allow virtual inheritance
-                rcp_dynamic_cast<NonLinearOperator<SC, LO, GO, NO>>(this->OperatorVector_[i])
+                rcp_dynamic_cast<NonLinearOperator<SC, LO, GO, NO>>(this->NonLinearOperatorVector_[i])
                     ->apply(*this->XTmp_, y, alpha, beta);
                 if (firstOp) {
                     beta = ScalarTraits<SC>::one();
@@ -54,21 +54,20 @@ void NonLinearSumOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVe
 }
 
 template <class SC, class LO, class GO, class NO>
-int NonLinearSumOperator<SC, LO, GO, NO>::addOperator(SchwarzOperatorPtr op) {
-    auto tempOp = Teuchos::rcp_dynamic_cast<NonLinearOperator<SC, LO, GO, NO>>(op);
-    TEUCHOS_TEST_FOR_EXCEPTION(tempOp.is_null(), std::runtime_error,
-                               "Can only add nonlinear operators to the nonlinear sum operator.");
-    return SumOperator<SC, LO, GO, NO>::addOperator(op);
+int NonLinearSumOperator<SC, LO, GO, NO>::addOperator(NonLinearOperatorPtr op) {
+    NonLinearOperatorVector_.push_back(op);
+    EnableNonLinearOperators_.push_back(true);
+    return 0;
 }
 
 template <class SC, class LO, class GO, class NO>
-int NonLinearSumOperator<SC, LO, GO, NO>::addOperators(SchwarzOperatorPtrVecPtr operators) {
-    for (auto tempOp : operators) {
-        auto nonLinearTempOp = Teuchos::rcp_dynamic_cast<NonLinearOperator<SC, LO, GO, NO>>(tempOp);
-        TEUCHOS_TEST_FOR_EXCEPTION(nonLinearTempOp.is_null(), std::runtime_error,
-                                   "Can only add nonlinear operators to the nonlinear sum operator.");
+int NonLinearSumOperator<SC, LO, GO, NO>::addOperators(NonLinearOperatorPtrVecPtr operators) {
+    int ret = 0;
+    for (UN i = 1; i < operators.size(); i++) {
+        if (0 > addOperator(operators[i]))
+            ret -= pow(10, i);
     }
-    return SumOperator<SC, LO, GO, NO>::addOperators(operators);
+    return ret;
 }
 
 }; // namespace FROSch

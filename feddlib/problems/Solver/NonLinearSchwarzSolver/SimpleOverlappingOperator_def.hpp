@@ -103,7 +103,6 @@ template <class SC, class LO, class GO, class NO> int SimpleOverlappingOperator<
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, ETransp mode, SC alpha,
                                                       SC beta) const {
-    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
 
     // y = alpha*f(x) + beta*y
     // move the input to the local serial overlapping 2x ghosts map
