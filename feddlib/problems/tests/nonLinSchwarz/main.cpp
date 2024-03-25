@@ -55,6 +55,8 @@ void oneFunc3D(double *x, double *res, double *parameters) {
     res[2] = 1.;
 }
 
+void initialValue2D(double *x, double *res, double *parameters) { res[0] = x[0] * x[1] * (1 - x[0]) * (1 - x[1]); }
+
 typedef unsigned UN;
 typedef default_sc SC;
 typedef default_lo LO;
@@ -189,8 +191,6 @@ int main(int argc, char *argv[]) {
     // Initializes the system matrix (no values) and initializes the solution, rhs, residual vectors and splits them
     // between the subdomains
     nonLinLaplace->initializeProblem();
-    // Set initial guess
-    nonLinLaplace->solution_->putScalar(0.);
 
     // ########################
     // Solve the problem using nonlinear Schwarz
@@ -226,11 +226,6 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     auto mpiComm = domainVec.at(0)->getComm();
     auto serialComm = Teuchos::createSerialComm<LO>();
 
-    // The coarse space is built using this Jacobian
-    // TODO: kho should I put "more effort" into making this coarse space?
-    problem->assemble("Newton");
-    problem->setBoundariesSystem();
-
     auto variantString = problem->getParameterList()->get("Nonlin Schwarz Variant", "ASPEN");
     NonlinSchwarzVariant variant;
     if (variantString == "ASPEN") {
@@ -240,13 +235,18 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     } else {
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "Invalid nonlinear Schwarz solver type");
     }
+    problem->initSolutionWithFunction(initialValue2D, 0, std::vector<double>{0});
+
+    // The coarse space is built using this Jacobian
+    problem->assemble("Newton");
+    problem->setBoundariesSystem();
 
     // The operators
     auto nonLinearSchwarzOp = Teuchos::rcp(
         new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(serialComm, problem, problem->getParameterList()));
     nonLinearSchwarzOp->initialize();
-    auto coarseOperator =
-        Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(problem, problem->getParameterList()));
+    auto coarseOperator = Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(
+        problem, sublist(problem->getParameterList(), "Coarse Nonlinear Schwarz")));
     coarseOperator->initialize();
     coarseOperator->compute();
     // When using auto, this is an rcp to a const NonLinearSumOperator. We need non-const here to ensure that the
@@ -254,7 +254,7 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     Teuchos::RCP<FROSch::NonLinearSumOperator<SC, LO, GO, NO>> rhsSumOperator =
         Teuchos::rcp(new FROSch::NonLinearSumOperator<SC, LO, GO, NO>(mpiComm));
     rhsSumOperator->addOperator(rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(nonLinearSchwarzOp));
-    /* rhsSumOperator->addOperator(rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator)); */
+    rhsSumOperator->addOperator(rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
 
     auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
         problem->system_->getBlock(0, 0)->getXpetraMatrix(), problem->getParameterList()));
@@ -263,7 +263,7 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
     simpleCoarseOperator->initialize(coarseOperator);
     auto simpleSumOperator = Teuchos::rcp(new FROSch::SumOperator<SC, LO, GO, NO>(mpiComm));
     simpleSumOperator->addOperator(simpleOverlappingOperator);
-    /* simpleSumOperator->addOperator(simpleCoarseOperator); */
+    simpleSumOperator->addOperator(simpleCoarseOperator);
 
     // Init block vectors for nonlinear residual and outer Newton update
     auto gBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
@@ -345,10 +345,6 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
                                                   domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
             simpleOverlappingOperator->compute();
         }
-
-        // TODO: kho initialize and compute the simpleCoarseOperator
-
-        // TODO: kho make a sumOfSimpleOperators object and create thyra lin op object with that
 
         // Convert SchwarzOperator to Thyra::LinearOpBase
         auto xpetraOverlappingOperator = rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleSumOperator);

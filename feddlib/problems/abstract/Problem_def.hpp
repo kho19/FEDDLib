@@ -552,6 +552,21 @@ namespace FEDD
     }
 
     template <class SC, class LO, class GO, class NO>
+    void Problem<SC, LO, GO, NO>::initSolutionWithFunction(const RhsFunc_Type &f, int block, std::vector<double> params) {
+        TEUCHOS_TEST_FOR_EXCEPTION(solution_.is_null(), std::runtime_error,
+                                   "Initial value cannot be set before a call to initializeVectors()");
+        auto solution = solution_->getBlockNonConst(block);
+        SC result = 0;
+        for (auto i = 0; i < solution->getNumVectors(); i++) {
+            for (auto j = 0; j < solution->getLocalLength(); j++) {
+                auto x = domainPtr_vec_.at(block)->getMesh()->getPointsUnique()->at(j);
+                f(x.data(), &result, params.data());
+                solution->replaceLocalValue(j, i, result);
+            }
+        }
+    }
+
+    template <class SC, class LO, class GO, class NO>
     void Problem<SC, LO, GO, NO>::initializeSolverBuilder() const
     {
 

@@ -4,6 +4,15 @@
   <Parameter name="Overlap" type="int" value="2" />
   <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
 
+  <ParameterList name="ThyraSolver"> <!-- Solver used by the FEDD::Problem object in the inner Newton -->
+    <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
+    <ParameterList name="Linear Solver Types">
+      <ParameterList name="Amesos2">
+        <Parameter name="Solver Type" type="string" value="KLU2" />
+      </ParameterList>
+    </ParameterList>
+  </ParameterList>
+
   <ParameterList name="Outer Newton Nonlinear Schwarz">
     <ParameterList name="Thyra Solver Outer Newton">
       <Parameter name="Linear Solver Type" type="string" value="Belos" />
@@ -26,15 +35,6 @@
         </ParameterList>
       </ParameterList>
       <Parameter name="Preconditioner Type" type="string" value="None" />
-    </ParameterList>
-  </ParameterList>
-
-  <ParameterList name="ThyraSolver"> <!-- Solver used by the FEDD::Problem object in the inner Newton -->
-    <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
-    <ParameterList name="Linear Solver Types">
-      <ParameterList name="Amesos2">
-        <Parameter name="Solver Type" type="string" value="KLU2" />
-      </ParameterList>
     </ParameterList>
   </ParameterList>
 

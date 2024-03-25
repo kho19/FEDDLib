@@ -193,6 +193,8 @@ public:
 
     void initSolutionWithVector(MultiVector_Type& mv);
 
+    void initSolutionWithFunction(const RhsFunc_Type& f, int block, std::vector<double> params);
+
     LinSolverBuilderPtr_Type getLinearSolverBuilder() const{return linearSolverBuilder_;};
 
     CommConstPtr_Type getComm() const{return comm_;};

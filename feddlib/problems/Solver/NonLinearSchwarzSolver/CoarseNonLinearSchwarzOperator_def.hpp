@@ -75,7 +75,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
-    auto coarseParameterList = problem_->getParameterList()->sublist("Coarse Nonlinear Schwarz");
     auto dimension = problem_->getParameterList()->sublist("Parameter").get("Dimension", 2);
     auto dofsPerNode = problem_->getDofsPerNode(0);
     // Initialize the underlying IPOUHarmonicCoarseOperator object
@@ -96,9 +95,9 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
 
     // Build nullspace as in TwoLevelPreconditioner line 195
     NullSpaceType nullSpaceType;
-    if (!coarseParameterList.get("Null Space Type", "Laplace").compare("Laplace")) {
+    if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Laplace")) {
         nullSpaceType = NullSpaceType::Laplace;
-    } else if (!coarseParameterList.get("Null Space Type", "Laplace").compare("Linear Elasticity")) {
+    } else if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Linear Elasticity")) {
         nullSpaceType = NullSpaceType::Elasticity;
     } else {
         FROSCH_ASSERT(false, "Null Space Type unknown.");
