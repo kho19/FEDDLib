@@ -249,6 +249,8 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         problem, sublist(problem->getParameterList(), "Coarse Nonlinear Schwarz")));
     coarseOperator->initialize();
     coarseOperator->compute();
+    /* coarseOperator->exportCoarseBasis(); */
+
     // When using auto, this is an rcp to a const NonLinearSumOperator. We need non-const here to ensure that the
     // non-const (nonlinear) apply() overload is called
     Teuchos::RCP<FROSch::NonLinearSumOperator<SC, LO, GO, NO>> rhsSumOperator =
@@ -311,6 +313,8 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         rhsSumOperator->apply(*problem->getSolution()->getBlock(0)->getXpetraMultiVector(),
                               *g->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
+        // Update SimpleCoarseOperator to ensure it wraps the current CoarseNonLinearSchwarzOperator
+        simpleCoarseOperator->initialize(coarseOperator);
 
         if (variant == NonlinSchwarzVariant::ASPEN) {
             logGreen("Building ASPEN tangent", mpiComm);
