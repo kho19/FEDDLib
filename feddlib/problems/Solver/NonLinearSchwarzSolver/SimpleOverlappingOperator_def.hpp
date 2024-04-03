@@ -31,11 +31,11 @@ SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(ConstXMatri
       exporterGhostsToUnique_(), x_Ghosts_(), y_unique_(), y_Ghosts_(), bcFlagOverlappingGhosts_() {
     // Override the combine mode of the FROSch operator base object from the nonlinear Schwarz configuration
     if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Averaging")) {
-        this->Combine_ = this->CombinationType::Averaging;
+        this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Averaging;
     } else if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Full")) {
-        this->Combine_ = this->CombinationType::Full;
+        this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Full;
     } else if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Restricted")) {
-        this->Combine_ = this->CombinationType::Restricted;
+        this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted;
     }
 }
 
