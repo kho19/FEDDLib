@@ -122,6 +122,8 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
 
     BlockMatrixPtrFEDD getCoarseJacobian() const;
 
+    void exportCoarseBasis();
+
   private:
     // FEDDLib problem object. (will need to be changed for interoperability)
     NonLinearProblemPtrFEDD problem_;
