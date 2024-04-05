@@ -124,6 +124,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     } else {
         FEDD::logGreen("Vector is empty", this->MpiComm_);
     }
+    // Convert std::vector to ArrayRCP
     auto dirichletBoundaryDofs = arcp<GO>(dirichletBoundaryDofsVec);
     // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the coarse
     // problem
@@ -164,6 +165,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     deltaG0->addBlock(tempMV, 0);
 
     // Set solution_ to be u+P_0*g_0. g_0 is zero on the boundary, simulating P_0 locally
+    // x_ corresponds to u and problem_->solution_ corresponds to g_0
     // this = alpha*xTmp + beta*this
     problem_->solution_->update(ST::one(), *x_, ST::one());
 
@@ -173,7 +175,6 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     while (nlIts < maxNumIts_) {
 
         problem_->calculateNonLinResidualVec("reverse");
-        auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
 
         // Restrict the residual to the coarse space
         this->applyPhiT(*problem_->getResidualVector()->getBlock(0)->getXpetraMultiVector(), *coarseResidualVec);
@@ -209,14 +210,14 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
 
         // Apply the coarse solution
         this->applyCoarseSolve(*coarseResidualVec, *coarseDeltaG0, ETransp::NO_TRANS);
-        // Required because applyCoarseSolve switches out the map without restoring initial map. BAD!!
+        // TODO: kho fix this in FROSch
+        //  Required because applyCoarseSolve switches out the map without restoring initial map. BAD!!
         coarseResidualVec->replaceMap(this->GatheringMaps_[this->GatheringMaps_.size() - 1]);
 
         // Project the coarse nonlinear correction update into the global space
         this->applyPhi(*coarseDeltaG0, *deltaG0->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
 
         // Update the current coarse nonlinear correction g_0
-        // TODO: kho the signs might need adjusting
         problem_->solution_->update(ST::one(), *deltaG0, ST::one());
 
         nlIts++;

@@ -25,7 +25,7 @@
                 <Parameter name="Level Combination" type="string" value="Additive"/><!--Multiplicative,Additive-->
                 <Parameter name="OverlappingOperator Type" type="string" value="AlgebraicOverlappingOperator"/>
                 
-                <Parameter name="CoarseOperator Type" type="string" value="GDSWCoarseOperator"/><!--GDSWCoarseOperator,IPOUHarmonicCoarseOperator-->
+                <Parameter name="CoarseOperator Type" type="string" value="IPOUHarmonicCoarseOperator"/><!--GDSWCoarseOperator,IPOUHarmonicCoarseOperator-->
                 <Parameter name="Null Space Type" type="string"   value="Laplace"/>
                 
                 <ParameterList name="AlgebraicOverlappingOperator">

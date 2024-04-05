@@ -14,12 +14,14 @@
 #include <Teuchos_implicit_cast.hpp>
 #include <Tpetra_CombineMode.hpp>
 #include <Tpetra_Core.hpp>
+#include <Tpetra_MultiVector_decl.hpp>
 #include <Xpetra_ConfigDefs.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
 #include <Xpetra_ExportFactory.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <Xpetra_MapFactory_decl.hpp>
 #include <Xpetra_MatrixFactory.hpp>
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
 #include <vector>
@@ -239,19 +241,19 @@ void tpetraImportExport(int argc, char *argv[]) {
     //  - ABSMAX (same as REPLACE)
     //  - ZERO (does not place zeros as documented. Instead seems to make the map ignore overlap)
     //  - ADD_ASSIGN (Does not work at all, throwing "Should never get here!" error)
-    auto overlappingMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(overlappingMap, 4));
-    auto uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, 4));
-
-    for (int i = 0; i < 2; i++) {
-        uniqueMat->insertGlobalValues(i + 2 * myRank, globalColIdx, valTwo);
-    }
-    uniqueMat->fillComplete();
-    uniqueMat->describe(*out, Teuchos::VERB_EXTREME);
-
-    overlappingMat->doExport(*uniqueMat, uniqueToOverlappingExporter, Tpetra::INSERT);
-    overlappingMat->fillComplete();
-    overlappingMat->describe(*out, Teuchos::VERB_EXTREME);
-
+    /* auto overlappingMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(overlappingMap, 4)); */
+    /* auto uniqueMat = rcp(new Tpetra::CrsMatrix<SC, LO, GO, NO>(uniqueMap, 4)); */
+    /**/
+    /* for (int i = 0; i < 2; i++) { */
+    /*     uniqueMat->insertGlobalValues(i + 2 * myRank, globalColIdx, valTwo); */
+    /* } */
+    /* uniqueMat->fillComplete(); */
+    /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
+    /**/
+    /* overlappingMat->doImport(*uniqueMat, uniqueToOverlappingImporter, Tpetra::ADD); */
+    /* overlappingMat->fillComplete(); */
+    /* overlappingMat->describe(*out, Teuchos::VERB_EXTREME); */
+    /**/
     /* for (int i = 0; i < 3; i++) { */
     /*     overlappingMat->insertGlobalValues(i + myRank, globalColIdx(), valOne()); */
     /* } */
@@ -263,7 +265,7 @@ void tpetraImportExport(int argc, char *argv[]) {
     /* uniqueMat->fillComplete(); */
     /* logGreen("Unique matrix", comm); */
     /* uniqueMat->describe(*out, Teuchos::VERB_EXTREME); */
-
+    /**/
     // ----------------------- Test 2: insertGlobalValues() test -----------------------
     // Take care when using insertGlobalValues() on overlapping matrices. Values on nonowned rows are communicated
     // during fillComplete(). Values on owned rows are not communicated, so inserting values into rows that are multiply
@@ -333,6 +335,42 @@ void tpetraImportExport(int argc, char *argv[]) {
     /* overlappingMat2->doImport(*overlappingMat1, overlappingToOverlappingImporter, Tpetra::INSERT); */
     /* overlappingMat2->fillComplete(); */
     /* overlappingMat2->describe(*out, Teuchos::VERB_EXTREME); */
+
+    // ----------------------- Test 6: Reading and writing files in a distributed fashion -----------------------
+    // readDenseFile does not distribute according to the map passed in so a subsequent import is necessary
+    Tpetra::MatrixMarket::Reader<Tpetra::CrsMatrix<SC, LO, GO, NO>> tpetraReader;
+    Teuchos::RCP<const Tpetra::Map<LO, GO, NO>> nullRCP = null;
+    auto uniqueVec = tpetraReader.readDenseFile("test.mm", comm, nullRCP);
+
+    // Build vector map
+    std::vector<GO> vecMapList(2);
+    if (myRank == 0) {
+        vecMapList.at(0) = 0;
+        vecMapList.at(1) = 3;
+    } else if (myRank == 1) {
+        vecMapList.at(0) = 1;
+        vecMapList.at(1) = 2;
+    }
+    Teuchos::ArrayView<const GO> vecMapListConstView = Teuchos::arrayViewFromVector(vecMapList);
+    Teuchos::RCP<const Tpetra::Map<LO, GO, NO>> vecMap =
+        rcp(new Tpetra::Map<LO, GO, NO>(4, vecMapListConstView, zero, comm));
+
+    // Init vec and importer
+    auto vec = Tpetra::MultiVector<SC>(vecMap, 1);
+    Teuchos::RCP<const Tpetra::Import<LO, GO, NO>> vecImporter =
+        rcp(new Tpetra::Import<LO, GO, NO>(uniqueVec->getMap(), vecMap));
+
+    // Do the import
+    vec.doImport(*uniqueVec, *vecImporter, Tpetra::CombineMode::INSERT);
+
+    logGreen("vecMap", comm);
+    vecMap->describe(*out, Teuchos::VERB_EXTREME);
+
+    logGreen("uniqueVec", comm);
+    uniqueVec->describe(*out, Teuchos::VERB_EXTREME);
+
+    logGreen("vec", comm);
+    vec.describe(*out, Teuchos::VERB_EXTREME);
 }
 
 int main(int argc, char *argv[]) {
