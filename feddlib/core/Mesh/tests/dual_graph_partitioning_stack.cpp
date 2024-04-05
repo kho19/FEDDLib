@@ -35,12 +35,12 @@ int main(int argc, char *argv[]) {
     ParameterList parameterListParameter("Parameter");
     parameterListParameter.set("Dimension", dim);
     parameterListParameter.set("Discretization", "P1");
-    parameterListParameter.set("Mesh Name", "simple_square.mesh");
+    parameterListParameter.set("Mesh Name", "square_9.mesh");
     parameterListParameter.set("Source Type", "surface");
     parameterListParameter.set("Mesh Delimiter", " ");
     ParameterList parameterListPartitioner("Mesh Partitioner");
     parameterListPartitioner.set("Contiguous", true);
-    parameterListPartitioner.set("Mesh 1 Name", "simple_square.mesh");
+    parameterListPartitioner.set("Mesh 1 Name", "square_9.mesh");
     parameterListTest->set("Parameter", parameterListParameter);
     parameterListTest->set("Mesh Partitioner", parameterListPartitioner);
 

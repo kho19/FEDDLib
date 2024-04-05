@@ -38,9 +38,9 @@ TRIBITS_ADD_TEST(
 
 TRIBITS_COPY_FILES_TO_BINARY_DIR(meshes_dual_graph_partitioning_stack
    SOURCE_DIR ${CMAKE_SOURCE_DIR}/meshes
-   SOURCE_FILES simple_square.mesh simple_square.mesh
+   SOURCE_FILES square_9.mesh square_9.mesh
    DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
-   DEST_FILES simple_square.mesh simple_square.mesh
+   DEST_FILES square_9.mesh square_9.mesh
    EXEDEPS dual_graph_partitioning_stack
 )
 

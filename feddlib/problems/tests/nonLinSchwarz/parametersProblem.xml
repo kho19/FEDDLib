@@ -9,10 +9,10 @@
 
     <ParameterList name="Mesh Partitioner">
         <Parameter name="Contiguous" type="bool" value="true"/>
-        <Parameter name="Mesh 1 Name" type="string" value="square.mesh"/>
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="big_square.mesh"/> -->
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="large_square.mesh"/> -->
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="simple_square.mesh"/> -->
+        <!-- <Parameter name="Mesh 1 Name" type="string" value="square.mesh"/> -->
+        <Parameter name="Mesh 1 Name" type="string" value="square_2500.mesh"/>
+        <!-- <Parameter name="Mesh 1 Name" type="string" value="square_10k.mesh"/> -->
+        <!-- <Parameter name="Mesh 1 Name" type="string" value="square_900.mesh"/> -->
         <!-- <Parameter name="Mesh 1 Name" type="string" value="circle2D_1800.mesh"/> -->
     </ParameterList>
 
