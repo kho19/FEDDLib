@@ -10,6 +10,7 @@
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSumOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleCoarseOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator_decl.hpp"
+#include "feddlib/problems/Solver/NonLinearSolver.hpp"
 #include "feddlib/problems/specific/NonLinLaplace_decl.hpp"
 #include <FROSch_AlgebraicOverlappingOperator_decl.hpp>
 #include <FROSch_ExtractSubmatrices_decl.hpp>
@@ -195,8 +196,8 @@ int main(int argc, char *argv[]) {
     // ########################
     // Solve the problem using nonlinear Schwarz
     // ########################
-
-    solve(nonLinLaplace, overlap);
+    NonLinearSolver<SC, LO, GO, NO> nlSolverAssFE("NonLinearSchwarz");
+    nlSolverAssFE.solve(*nonLinLaplace);
 
     comm->barrier();
 
@@ -279,7 +280,7 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
     Teuchos::RCP<Xpetra::Matrix<SC, LO, GO, NO>> jacobianGhosts;
     Teuchos::RCP<Xpetra::Import<LO, GO>> uniqueToOverlappingGhostsImporter;
-    RCP<ParameterList> params = parameterList();
+    ParameterListPtr_Type params = parameterList();
     if (variant == NonlinSchwarzVariant::ASPIN) {
         jacobianGhosts = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
             domainVec.at(0)->getMapOverlappingGhosts()->getXpetraMap(), domainVec.at(0)->getApproxEntriesPerRow());
@@ -309,7 +310,6 @@ void solve(NonLinearProblemPtr_Type problem, int overlap) {
 
         // Compute the residual of the alternative problem \mathcal{F} = g
         // g fulfills the boundary conditions
-        // TODO: kho apply the sum operator here resulting in g
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         rhsSumOperator->apply(*problem->getSolution()->getBlock(0)->getXpetraMultiVector(),
                               *g->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
