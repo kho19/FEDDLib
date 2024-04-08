@@ -570,6 +570,20 @@ void NonLinearSolver<SC,LO,GO,NO>::solveExtrapolation(TimeProblem<SC,LO,GO,NO> &
     }
 }
 
+// Notes on using the nonlinear Schwarz solver:
+//
+// - Overlapping subdomain boundary nodes are marked with the boundary condition flag -99 during mesh partitioning. This
+// information is required internally by the nonlinear Schwarz solver to set a dirichlet boundary condition
+// during local subdomain solves. To facilitate this the following line must be included in the main.cpp
+// bcFactory->addBC(currentSolutionDirichlet, -99, 0, domain, "Dirichlet", 1);
+// together with the function
+// void currentSolutionDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
+//
+// - The coarse space basis functions are built using the Jacobian evaluated at the initial solution. By default this is
+// the zero vector. An initial solution of choice can be set by calling:
+// problem->initSolutionWithFunction(initialValue2D, 0, std::vector<double>{0});
+// together with e.g.
+// void initialValue2D(double *x, double *res, double *parameters) { res[0] = x[0] * x[1] * (1 - x[0]) * (1 - x[1]); }
 template <class SC, class LO, class GO, class NO>
 void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Type &problem) {
 
