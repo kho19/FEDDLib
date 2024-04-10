@@ -10,7 +10,7 @@
 namespace FEDD {
 
 void rhsFunc(double *x, double *res, double *parameters) {
-    res[0] = 100; // x[0] * sin(x[1]);
+    res[0] = 1; // x[0] * sin(x[1]);
 }
 
 /*!
@@ -63,7 +63,7 @@ void AssembleFENonLinLaplace<SC, LO, GO, NO>::assemblyNonLinLaplacian(
     SmallMatrixPtr_Type &elementMatrix) {
 
     int dim = this->getDim();
-    UN deg = Helper::determineDegree2(dim, this->FEType_, this->FEType_,
+    UN deg = Helper::determineDegree(dim, this->FEType_, this->FEType_,
                                       Helper::Grad, Helper::Grad);
 
     vec3D_dbl_ptr_Type dPhi;
@@ -135,7 +135,7 @@ template <class SC, class LO, class GO, class NO>
 void AssembleFENonLinLaplace<SC, LO, GO, NO>::assembleRHS() {
 
     int dim = this->getDim();
-    UN deg = Helper::determineDegree2(dim, this->FEType_, this->FEType_,
+    UN deg = Helper::determineDegree(dim, this->FEType_, this->FEType_,
                                       Helper::Grad, Helper::Grad);
 
     vec3D_dbl_ptr_Type dPhi;

@@ -5,24 +5,30 @@
 
 namespace FEDD {
 
-template <class SC, class LO, class GO, class NO>
-AssembleFEFactory<SC, LO, GO, NO>::AssembleFEFactory() {}
 
 template <class SC, class LO, class GO, class NO>
-typename AssembleFEFactory<SC, LO, GO, NO>::AssembleFEPtr_Type
-AssembleFEFactory<SC, LO, GO, NO>::build(string problemType, int flag,
-                                         vec2D_dbl_Type nodesRefConfig,
-                                         ParameterListPtr_Type params,
-                                         tuple_disk_vec_ptr_Type tuple) {
-  AssembleFEPtr_Type assembleFE;
+AssembleFEFactory<SC,LO,GO,NO>::AssembleFEFactory(){
 
-  AssembleFEPtr_Type assembleFESpecific;
+}
+
+
+template <class SC, class LO, class GO, class NO>
+typename AssembleFEFactory<SC,LO,GO,NO>::AssembleFEPtr_Type AssembleFEFactory<SC,LO,GO,NO>::build(string problemType, int flag, vec2D_dbl_Type nodesRefConfig, ParameterListPtr_Type params,tuple_disk_vec_ptr_Type tuple)
+{
+	AssembleFEPtr_Type assembleFE;
+
+	AssembleFEPtr_Type assembleFESpecific;
 
 	if(problemType == "Laplace"){
 		//AssembleFE_Laplace<SC,LO,GO,NO> assembleFESpecific  = new AssembleFE_Laplace<SC,LO,GO,NO>(flag,nodesRefConfig, params);
 		Teuchos::RCP<AssembleFE_Laplace<SC,LO,GO,NO>> assembleFESpecific(new AssembleFE_Laplace<SC,LO,GO,NO>(flag,nodesRefConfig, params,tuple) );
 		assembleFE = assembleFESpecific;
 	}
+  else if (problemType == "NonLinearLaplace") {
+    	Teuchos::RCP<AssembleFENonLinLaplace<SC, LO, GO, NO>> assembleFESpecific(new AssembleFENonLinLaplace<SC, LO, GO, NO>(flag, nodesRefConfig,
+                                                    params, tuple));
+    	assembleFE = assembleFESpecific;
+  }
 	else if(problemType == "NavierStokes"){
 		Teuchos::RCP<AssembleFENavierStokes<SC,LO,GO,NO>> assembleFESpecific(new AssembleFENavierStokes<SC,LO,GO,NO>(flag,nodesRefConfig, params,tuple) );
 		assembleFE = assembleFESpecific;
@@ -60,8 +66,8 @@ AssembleFEFactory<SC, LO, GO, NO>::build(string problemType, int flag,
     		TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "No specific implementation for your request.");
 
 
-  return assembleFE;
+	return assembleFE;
 };
 
-} // namespace FEDD
+}
 #endif
