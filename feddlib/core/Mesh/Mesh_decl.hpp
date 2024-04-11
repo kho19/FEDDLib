@@ -85,7 +85,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     MapConstPtr_Type getElementMap() const;
 
-    MapConstPtr_Type getEdgeMap(); // Edge Map
+    MapConstPtr_Type getEdgeMap() const; // Edge Map
 
     vec2D_dbl_ptr_Type getPointsRepeated() const;
 

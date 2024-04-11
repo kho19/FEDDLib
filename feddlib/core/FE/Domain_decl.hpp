@@ -557,7 +557,7 @@ void setComm(CommConstPtr_Type newComm) const {this->comm_ = newComm;}
 /* ----------------------------------------------------------------------------------------*/
 
    private:
-   CommConstPtr_Type comm_; // underlying comm
+   mutable  CommConstPtr_Type comm_; // underlying comm
    MeshPtr_Type mesh_;      // underlying mesh as base class mesh type. usually underlying mesh is either structured or unstructured
    int dim_;                // dimension
    vec_dbl_Type coorRec;

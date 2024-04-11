@@ -1,3 +1,4 @@
+#ifndef FE_DEF_hpp
 #define FE_DEF_hpp
 
 #ifdef FEDD_HAVE_ACEGENINTERFACE
@@ -2412,14 +2413,9 @@ void FE<SC,LO,GO,NO>::assemblyLaplaceVecField(int dim,
                     value[j] = 0.;
                 }
             }
-            // kho vector valued laplacian has one dof per dimension
-            // Need to insert value into A for each dimension
-            for (UN d = 0; d < dim; d++) {
-                for (UN j = 0; j < indices.size(); j++)
-                    indices[j] =
-                        GO(dim * map->getGlobalElement(
-                                     elements->getElement(T).getNode(j)) +
-                           d);
+            for (UN d=0; d<dim; d++) {
+                for (UN j=0; j < indices.size(); j++)
+                    indices[j] = GO ( dim * map->getGlobalElement( elements->getElement(T).getNode(j) ) + d );
 
                 GO row = GO ( dim * map->getGlobalElement( elements->getElement(T).getNode(i) ) + d );
                 A->insertGlobalValues( row, indices(), value() );
@@ -3506,8 +3502,7 @@ void FE<SC,LO,GO,NO>::assemblyElasticityStressesAceFEM(int dim,
     }
 }
 
-// here and in next method reassembly of the nonlinear problem for
-// Navier-Stokes occurs
+
 template <class SC, class LO, class GO, class NO>
 void FE<SC,LO,GO,NO>::assemblyAdvectionVecField(int dim,
                                                   std::string FEType,
@@ -3881,8 +3876,7 @@ void FE<SC,LO,GO,NO>::assemblyDivAndDivT( int dim,
 
 }
 
-// 
-// used in steadyNavierStokes to construct the system matrices
+    
 template <class SC, class LO, class GO, class NO>
 void FE<SC,LO,GO,NO>::assemblyDivAndDivTFast( int dim,
                                              std::string FEType1,
