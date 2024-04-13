@@ -1,26 +1,29 @@
-# You can adjust the behavior by modifying this file.
-# For more information, see:
-# https://github.com/github/super-linter
-name: Linter
-
+# https://github.com/cpp-linter/cpp-linter-action?tab=readme-ov-file
+name: cpp-linter
 on:
-  push:
   pull_request:
+    # branches: [main, master, develop]
+    paths: ['**.c', '**.cpp', '**.h', '**.hpp', '**.cxx', '**.hxx', '**.cc', '**.hh', '**CMakeLists.txt', 'meson.build', '**.cmake']
+  push:
+    # branches: [main, master, develop]
+    paths: ['**.c', '**.cpp', '**.h', '**.hpp', '**.cxx', '**.hxx', '**.cc', '**.hh', '**CMakeLists.txt', 'meson.build', '**.cmake']
+
 jobs:
-  run-lint:
+  cpp-linter:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@main
-        with:
-          # Full git history is needed to get a proper list of changed files within `super-linter`
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Lint Code Base
-        uses: github/super-linter@main
+      # ... optionally setup build env to create a compilation database
+
+      - uses: cpp-linter/cpp-linter-action@v2
+        id: linter
         env:
-          VALIDATE_ALL_CODEBASE: false
-          DEFAULT_BRANCH: "develop"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLANG_FORMAT_FILE_NAME: "clang-format"
-          LINTER_RULES_PATH: ".github/config"
+        with:
+          style: 'file'  # Use .clang-format config file. 
+          tidy-checks: '' # disable clang-tidy checks. 
+
+      - name: Fail fast?!
+        if: steps.linter.outputs.clang-format-checks-failed > 0
+        run: exit 1
