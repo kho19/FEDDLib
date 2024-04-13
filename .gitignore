@@ -4,10 +4,3 @@
 *.dylib
 /build*
 /.vscode
-.uuid
-.cache/
-.idea/
-*.yaml
-misc/
-.clang-format
-compile_commands.json
