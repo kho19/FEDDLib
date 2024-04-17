@@ -152,6 +152,13 @@ public:
     void readMesh(const int volumeID = 10);
 
     /**
+     * \brief Build dual graph of the mesh provided where the mesh distributed
+     * Essentialy a wrapper of the metis function METIS_MeshToDual()
+     * Note: CSR (compressed sparse row), CRS (compressed row storage), Yale format are all the same
+     */
+    void buildOverlappingDualGraphFromDistributed(const int meshNumber, const int overlap);
+
+    /**
      * \brief Build dual graph of the mesh provided
      * Essentialy a wrapper of the metis function METIS_MeshToDual()
      * Note: CSR (compressed sparse row), CRS (compressed row storage), Yale format are all the same

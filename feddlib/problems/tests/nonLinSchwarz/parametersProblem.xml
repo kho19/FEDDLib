@@ -1,6 +1,8 @@
 <ParameterList name="problem">
     <ParameterList name="Parameter">
         <Parameter name="Dimension" type="int" value="2"/>
+        <Parameter name="H/h" type="int" value="10"/>
+        <Parameter name="Mesh Type" type="string" value="structured"/>
         <Parameter name="Discretization" type="string" value="P1"/><!--P1, P2-->
         <Parameter name="relNonLinTol" type="double" value="1.0e-4"/>
         <Parameter name="MaxNonLinIts" type="int" value="50"/>

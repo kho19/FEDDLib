@@ -417,6 +417,8 @@ public:
     */
     LO getNumPoints(std::string type="Unique") const;/*local*/
 
+    int getNumProcsCoarseSolve() const;/*local*/
+
 	/*!
          \brief Checks geometriy
          @param[in] MeshType

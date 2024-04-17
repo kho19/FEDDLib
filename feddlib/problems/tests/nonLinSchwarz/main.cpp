@@ -2,6 +2,7 @@
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMultiVector_decl.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/NonLinearSolver.hpp"
 #include "feddlib/problems/specific/NonLinLaplace_decl.hpp"
 #include <Xpetra_DefaultPlatform.hpp>
@@ -69,11 +70,27 @@ int main(int argc, char *argv[]) {
     // ########################
     // Set default values for command line parameters
     // ########################
+    // Command Line Parameters
+    Teuchos::CommandLineProcessor myCLP;
+    string ulib_str = "Tpetra";
+    myCLP.setOption("ulib",&ulib_str,"Underlying lib");
+
+    string xmlProblemFile = "parametersProblem.xml";
+    myCLP.setOption("problemfile",&xmlProblemFile,".xml file with Inputparameters.");
+    string xmlPrecFile = "parametersPrec.xml";
+    myCLP.setOption("precfile",&xmlPrecFile,".xml file with Inputparameters.");
+    string xmlSolverFile = "parametersSolver.xml";
+    myCLP.setOption("solverfile",&xmlSolverFile,".xml file with Inputparameters.");
+
+    myCLP.recogniseAllOptions(true);
+    myCLP.throwExceptions(false);
+    Teuchos::CommandLineProcessor::EParseCommandLineReturn parseReturn = myCLP.parse(argc,argv);
+    if(parseReturn == Teuchos::CommandLineProcessor::PARSE_HELP_PRINTED) {
+        mpiSession.~GlobalMPISession();
+        return 0;
+    }
 
     bool debug = false;
-    if (argc > 1) {
-        debug = true;
-    }
     if (comm->getRank() == 1 && debug) {
         waitForGdbAttach<LO>();
     }
@@ -87,10 +104,6 @@ int main(int argc, char *argv[]) {
         cout << "###############################################################" << endl;
     }
 
-    string xmlProblemFile = "parametersProblem.xml";
-    string xmlPrecFile = "parametersPrec.xml";
-    string xmlSolverFile = "parametersSolver.xml";
-
     ParameterListPtr_Type parameterListProblem = Teuchos::getParametersFromXmlFile(xmlProblemFile);
     ParameterListPtr_Type parameterListPrec = Teuchos::getParametersFromXmlFile(xmlPrecFile);
     ParameterListPtr_Type parameterListSolver = Teuchos::getParametersFromXmlFile(xmlSolverFile);
@@ -100,8 +113,14 @@ int main(int argc, char *argv[]) {
     parameterListAll->setParameters(*parameterListSolver);
 
     int dim = parameterListProblem->sublist("Parameter").get("Dimension", 2);
+    int minNumberSubdomains = 1;
+    int n = -1;
+    int m = parameterListProblem->sublist("Parameter").get("H/h", 5);
+    string meshType = parameterListProblem->sublist("Parameter").get("Mesh Type", "structured");
     string FEType = parameterListProblem->sublist("Parameter").get("Discretization", "P1");
     auto overlap = parameterListSolver->get("Overlap", 1);
+    int numProcsCoarseSolve = 0; // TODO: kho need to implement this
+    int size = comm->getSize() - numProcsCoarseSolve;
 
     // ########################
     // Build mesh
@@ -116,11 +135,35 @@ int main(int argc, char *argv[]) {
     ParameterListPtr_Type pListPartitioner = sublist(parameterListAll, "Mesh Partitioner");
     MeshPartitioner<SC, LO, GO, NO> partitionerP1(domainP1Array, pListPartitioner, "P1", dim);
 
-    partitionerP1.readMesh();
-    partitionerP1.buildDualGraph(0);
-    partitionerP1.partitionDualGraphWithOverlap(0, overlap);
+    if (!meshType.compare("structured")) {
+        TEUCHOS_TEST_FOR_EXCEPTION(size % minNumberSubdomains != 0, std::logic_error,
+                                   "Wrong number of processors for structured mesh.");
+        if (dim == 2) {
+            n = (int)(std::pow(size, 1 / 2.) + 100. * Teuchos::ScalarTraits<double>::eps()); // 1/H
+            std::vector<double> x(2);
+            x[0] = 0.0;
+            x[1] = 0.0;
+            domainP1.reset(new Domain<SC, LO, GO, NO>(x, 1., 1., comm));
+            domainP1Array[0] = domainP1;
+            domainP1->buildMesh(1, "Square", dim, FEType, n, m, numProcsCoarseSolve);
+        } else if (dim == 3) {
+            n = (int)(std::pow(size, 1 / 3.) + 100. * Teuchos::ScalarTraits<SC>::eps()); // 1/H
+            std::vector<double> x(3);
+            x[0] = 0.0;
+            x[1] = 0.0;
+            x[2] = 0.0;
+            domainP1.reset(new Domain<SC, LO, GO, NO>(x, 1., 1., 1., comm));
+            domainP1Array[0] = domainP1;
+            domainP1->buildMesh(1, "Square", dim, FEType, n, m, numProcsCoarseSolve);
+        }
+        partitionerP1 = MeshPartitioner<SC, LO, GO, NO>(domainP1Array, pListPartitioner, "P1", dim);
+        partitionerP1.buildOverlappingDualGraphFromDistributed(0, 2);
+    } else if (!meshType.compare("unstructured")) {
+        partitionerP1.readMesh();
+        partitionerP1.buildDualGraph(0);
+        partitionerP1.partitionDualGraphWithOverlap(0, overlap);
+    }
     partitionerP1.buildSubdomainFEsAndNodeLists(0);
-
     domain = domainP1;
 
     // ########################
@@ -158,7 +201,6 @@ int main(int argc, char *argv[]) {
     nlSolverAssFE.solve(*nonLinLaplace);
 
     comm->barrier();
-
     // Export Solution
     bool boolExportSolution = true;
     if (boolExportSolution) {

@@ -545,6 +545,11 @@ LO Domain<SC,LO,GO,NO>::getNumPoints(std::string type) const{
 }
 
 template <class SC, class LO, class GO, class NO>
+int Domain<SC,LO,GO,NO>::getNumProcsCoarseSolve() const{
+    return numProcsCoarseSolve_;
+}
+
+template <class SC, class LO, class GO, class NO>
 int Domain<SC,LO,GO,NO>::checkGeomentry(std::string meshType, int dim) const{
 
     int notfoundLabel;
