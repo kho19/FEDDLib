@@ -1,6 +1,7 @@
 #ifndef NONLINEARSOLVER_DEF_hpp
 #define NONLINEARSOLVER_DEF_hpp
 #include "NonLinearSolver_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/CoarseNonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSumOperator_decl.hpp"
@@ -588,7 +589,9 @@ template <class SC, class LO, class GO, class NO>
 void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Type &problem) {
 
     auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-    logGreen("Commencing nonlinear Schwarz solve", problem.getComm());
+    print("###############################################################", problem.getComm());
+    print("############ Starting nonlinear Schwarz solve ... #############", problem.getComm());
+    print("###############################################################", problem.getComm());
 
     // Define nonlinear Schwarz operator
     auto domainVec = problem.getDomainVector();
@@ -610,15 +613,9 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     problem.setBoundariesSystem();
 
     // The operators
-    auto nonLinearSchwarzOp = Teuchos::rcp(
-        new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(serialComm, Teuchos::rcpFromRef(problem), problem.getParameterList()));
+    auto nonLinearSchwarzOp = Teuchos::rcp(new FROSch::NonLinearSchwarzOperator<SC, LO, GO, NO>(
+        serialComm, Teuchos::rcpFromRef(problem), problem.getParameterList()));
     nonLinearSchwarzOp->initialize();
-    auto coarseOperator = Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(
-        Teuchos::rcpFromRef(problem), sublist(problem.getParameterList(), "Coarse Nonlinear Schwarz")));
-    coarseOperator->initialize();
-    coarseOperator->compute();
-    // For plotting the coarse basis functions
-    /* coarseOperator->exportCoarseBasis(); */
 
     // When using auto, this is an rcp to a const NonLinearSumOperator. We need non-const here to ensure that the
     // non-const (nonlinear) apply() overload is called
@@ -626,17 +623,31 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         Teuchos::rcp(new FROSch::NonLinearSumOperator<SC, LO, GO, NO>(mpiComm));
     rhsSumOperator->addOperator(
         Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(nonLinearSchwarzOp));
-    rhsSumOperator->addOperator(Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
+
+    int numLevels = problem.getParameterList()->get("Levels", 1);
+    TEUCHOS_TEST_FOR_EXCEPTION(numLevels > 2, std::runtime_error, "More than two levels are not implemented");
+    auto coarseOperator = Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(
+        Teuchos::rcpFromRef(problem), sublist(problem.getParameterList(), "Coarse Nonlinear Schwarz")));
+    if (numLevels == 2) {
+        coarseOperator->initialize();
+        coarseOperator->compute();
+        // For plotting the coarse basis functions
+        /* coarseOperator->exportCoarseBasis(); */
+        rhsSumOperator->addOperator(
+            Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
+    }
 
     auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
         problem.system_->getBlock(0, 0)->getXpetraMatrix(), problem.getParameterList()));
-    auto simpleCoarseOperator = Teuchos::rcp(new FROSch::SimpleCoarseOperator<SC, LO, GO, NO>(
-        problem.system_->getBlock(0, 0)->getXpetraMatrix(), problem.getParameterList()));
-    simpleCoarseOperator->initialize(coarseOperator);
     auto simpleSumOperator = Teuchos::rcp(new FROSch::SumOperator<SC, LO, GO, NO>(mpiComm));
     simpleSumOperator->addOperator(simpleOverlappingOperator);
-    simpleSumOperator->addOperator(simpleCoarseOperator);
 
+    auto simpleCoarseOperator = Teuchos::rcp(new FROSch::SimpleCoarseOperator<SC, LO, GO, NO>(
+        problem.system_->getBlock(0, 0)->getXpetraMatrix(), problem.getParameterList()));
+    if (numLevels == 2) {
+        simpleCoarseOperator->initialize(coarseOperator);
+        simpleSumOperator->addOperator(simpleCoarseOperator);
+    }
     // Init block vectors for nonlinear residual and outer Newton update
     auto gBlock = Teuchos::rcp(new MultiVector_Type(domainVec.at(0)->getMesh()->getMapUnique(), 1));
     gBlock->putScalar(0.);
@@ -682,9 +693,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         rhsSumOperator->apply(*problem.getSolution()->getBlock(0)->getXpetraMultiVector(),
                               *g->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
-        // Update SimpleCoarseOperator to ensure it wraps the current CoarseNonLinearSchwarzOperator
-        simpleCoarseOperator->initialize(coarseOperator);
-
+        if (numLevels == 2) {
+            // Update SimpleCoarseOperator to ensure it wraps the current CoarseNonLinearSchwarzOperator
+            simpleCoarseOperator->initialize(coarseOperator);
+        }
         if (variant == NonlinSchwarzVariant::ASPEN) {
             logGreen("Building ASPEN tangent", mpiComm);
 
@@ -732,8 +744,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
         // Solve linear system with GMRES
         logGreen("Solving outer linear system", mpiComm);
-        solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getBlockNonConst(0), g->getBlock(0),
-                        problem.getParameterList());
+        FEDD_TIMER_START(GMRESTimer, " - Schwarz - GMRES solve");
+        gmresIts += solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getBlockNonConst(0), g->getBlock(0),
+                                    problem.getParameterList());
+        FEDD_TIMER_STOP(GMRESTimer);
         // Update the current solution
         // solution = alpha * deltaSolution + beta * solution
         problem.solution_->update(ST::one(), deltaSolution, ST::one());
@@ -745,9 +759,32 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
         outerNonLinIts += 1;
     }
-    logGreen("Outer Newton terminated", mpiComm);
-    logSimple("Iterations: " + std::to_string(outerNonLinIts), mpiComm);
-    logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
+    auto itersVecSubdomains = nonLinearSchwarzOp->getRunStats();
+    auto itersVecCoarse = coarseOperator->getRunStats();
+    print("================= Nonlinear Schwarz terminated =========================", mpiComm);
+    print("\n\nOuter Newton:", mpiComm, 25);
+    print("Residual:", mpiComm, 15);
+    print("Iters:", mpiComm, 15);
+    print("GMRES iters:", mpiComm, 15);
+    print("\n", mpiComm, 25);
+    print(relativeResidual, mpiComm, 15, 2);
+    print(outerNonLinIts, mpiComm, 15, 2);
+    print(gmresIts, mpiComm, 15, 2);
+    print("\n\nInner Newton:", mpiComm, 25);
+    print("min. iters.", mpiComm, 15);
+    print("max. iters.", mpiComm, 15);
+    print("avg. iters.", mpiComm, 15);
+    print("\n", mpiComm, 25);
+    print(itersVecSubdomains.at(0), mpiComm, 15, 2);
+    print(itersVecSubdomains.at(1), mpiComm, 15, 2);
+    print(itersVecSubdomains.at(2), mpiComm, 15, 2);
+    if (numLevels == 2) {
+        print("\n\nCoarse Newton:", mpiComm, 25);
+        print("Iters.", mpiComm, 15);
+        print("\n", mpiComm, 25);
+        print(itersVecCoarse.at(0), mpiComm, 15, 2);
+    }
+    print("\n", mpiComm);
 }
 
 template <class SC, class LO, class GO, class NO>

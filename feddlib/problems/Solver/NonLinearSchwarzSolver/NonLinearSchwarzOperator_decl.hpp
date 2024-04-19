@@ -17,6 +17,7 @@
 #include <Teuchos_ScalarTraitsDecl.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
+#include <vector>
 
 /*!
  Declaration of NonLinearSchwarzOperator
@@ -33,8 +34,7 @@ namespace FROSch {
 enum class CombinationMode { Averaging, Full, Restricted };
 
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
-class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>,
-                                 public NonLinearOperator<SC, LO, GO, NO> {
+class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public NonLinearOperator<SC, LO, GO, NO> {
 
   protected:
     using CommPtr = typename SchwarzOperator<SC, LO, GO, NO>::CommPtr;
@@ -116,11 +116,13 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>,
     void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
                SC alpha = ST::one(), SC beta = ST::zero()) const override;
 
+    BlockMatrixPtrFEDD getLocalJacobianGhosts() const;
+
+    std::vector<SC> getRunStats() const;
+
     void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
 
     string description() const override;
-
-    BlockMatrixPtrFEDD getLocalJacobianGhosts() const;
 
   private:
     void replaceMapAndExportProblem();
@@ -162,6 +164,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>,
     // FE assembly factory for global and local assembly
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryGhostsLocal_;
+    // Store total iteration count of inner Newton methods over all calls to apply()
+    int totalIters_;
 };
 
 } // namespace FROSch

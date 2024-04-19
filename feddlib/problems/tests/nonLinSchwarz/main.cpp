@@ -73,19 +73,19 @@ int main(int argc, char *argv[]) {
     // Command Line Parameters
     Teuchos::CommandLineProcessor myCLP;
     string ulib_str = "Tpetra";
-    myCLP.setOption("ulib",&ulib_str,"Underlying lib");
+    myCLP.setOption("ulib", &ulib_str, "Underlying lib");
 
     string xmlProblemFile = "parametersProblem.xml";
-    myCLP.setOption("problemfile",&xmlProblemFile,".xml file with Inputparameters.");
+    myCLP.setOption("problemfile", &xmlProblemFile, ".xml file with Inputparameters.");
     string xmlPrecFile = "parametersPrec.xml";
-    myCLP.setOption("precfile",&xmlPrecFile,".xml file with Inputparameters.");
+    myCLP.setOption("precfile", &xmlPrecFile, ".xml file with Inputparameters.");
     string xmlSolverFile = "parametersSolver.xml";
-    myCLP.setOption("solverfile",&xmlSolverFile,".xml file with Inputparameters.");
+    myCLP.setOption("solverfile", &xmlSolverFile, ".xml file with Inputparameters.");
 
     myCLP.recogniseAllOptions(true);
     myCLP.throwExceptions(false);
-    Teuchos::CommandLineProcessor::EParseCommandLineReturn parseReturn = myCLP.parse(argc,argv);
-    if(parseReturn == Teuchos::CommandLineProcessor::PARSE_HELP_PRINTED) {
+    Teuchos::CommandLineProcessor::EParseCommandLineReturn parseReturn = myCLP.parse(argc, argv);
+    if (parseReturn == Teuchos::CommandLineProcessor::PARSE_HELP_PRINTED) {
         mpiSession.~GlobalMPISession();
         return 0;
     }
@@ -198,9 +198,13 @@ int main(int argc, char *argv[]) {
     // Solve the problem using nonlinear Schwarz
     // ########################
     NonLinearSolver<SC, LO, GO, NO> nlSolverAssFE("NonLinearSchwarz");
+    FEDD_TIMER_START(SolveTimer, " - Schwarz - global solve");
     nlSolverAssFE.solve(*nonLinLaplace);
+    FEDD_TIMER_STOP(SolveTimer);
 
     comm->barrier();
+    Teuchos::TimeMonitor::report(cout, "FEDD");
+
     // Export Solution
     bool boolExportSolution = true;
     if (boolExportSolution) {

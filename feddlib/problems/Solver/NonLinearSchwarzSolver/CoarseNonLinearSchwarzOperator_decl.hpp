@@ -116,13 +116,15 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
                SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const override;
 
-    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
-
-    string description() const override;
-
     BlockMatrixPtrFEDD getCoarseJacobian() const;
 
     void exportCoarseBasis();
+
+    std::vector<SC> getRunStats() const;
+
+    void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const override;
+
+    string description() const override;
 
   private:
     // FEDDLib problem object. (will need to be changed for interoperability)
@@ -141,6 +143,8 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     // Temp. problem state params
     BlockMultiVectorPtrFEDD solutionTmp_;
     BlockMatrixPtrFEDD systemTmp_;
+    // Store total iteration count of inner Newton methods over all calls to apply()
+    int totalIters_;
 };
 
 } // namespace FROSch

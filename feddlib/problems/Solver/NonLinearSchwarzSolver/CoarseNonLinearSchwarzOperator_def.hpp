@@ -51,7 +51,7 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(N
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       coarseJacobian_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, newtonTol_{}, maxNumIts_{},
       criterion_{""}, solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))} {
+      systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, totalIters_{0} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -80,6 +80,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
     auto dimension = problem_->getParameterList()->sublist("Parameter").get("Dimension", 2);
     auto dofsPerNode = problem_->getDofsPerNode(0);
+    totalIters_ = 0;
     // Initialize the underlying IPOUHarmonicCoarseOperator object
     // TODO: kho dofsMaps need to be built properly for problems with more than one dof per node
     auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(1);
@@ -118,12 +119,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             dirichletBoundaryDofsVec->push_back(repeatedMap->getGlobalElement(i));
         }
     }
-    FEDD::logGreen("Boundary dofs vec", this->MpiComm_);
-    if (dirichletBoundaryDofsVec->size() > 0) {
-        FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_);
-    } else {
-        FEDD::logGreen("Vector is empty", this->MpiComm_);
-    }
+
     // Convert std::vector to ArrayRCP
     auto dirichletBoundaryDofs = arcp<GO>(dirichletBoundaryDofsVec);
     // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the coarse
@@ -232,7 +228,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
 
     // Set solution_ to g_i
     problem_->solution_->update(-ST::one(), *x_, ST::one());
-
+    totalIters_ += nlIts;
     FEDD::logGreen("Total coarse Newton iters: " + std::to_string(nlIts), this->MpiComm_);
 
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
@@ -273,17 +269,6 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x
                                                            SC beta) const {
     TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
                                "This apply() overload should not be used with nonlinear operators");
-}
-
-template <class SC, class LO, class GO, class NO>
-void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::describe(FancyOStream &out,
-                                                              const EVerbosityLevel verbLevel) const {
-    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "describe() has to be implemented properly...");
-}
-
-template <class SC, class LO, class GO, class NO>
-string CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::description() const {
-    return "Coarse Nonlinear Schwarz Operator";
 }
 
 template <class SC, class LO, class GO, class NO>
@@ -381,6 +366,23 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::exportCoarseBasis() {
         /* } */
     }
 }
+
+template <class SC, class LO, class GO, class NO>
+std::vector<SC> CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::getRunStats() const {
+    return std::vector<SC>{static_cast<SC>(totalIters_)};
+}
+
+template <class SC, class LO, class GO, class NO>
+void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::describe(FancyOStream &out,
+                                                              const EVerbosityLevel verbLevel) const {
+    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "describe() has to be implemented properly...");
+}
+
+template <class SC, class LO, class GO, class NO>
+string CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::description() const {
+    return "Coarse Nonlinear Schwarz Operator";
+}
+
 } // namespace FROSch
 
 #endif

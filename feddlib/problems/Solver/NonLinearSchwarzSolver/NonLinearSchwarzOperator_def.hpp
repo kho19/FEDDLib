@@ -9,7 +9,11 @@
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <Tacho_Driver.hpp>
+#include <Teuchos_Array.hpp>
 #include <Teuchos_BLAS_types.hpp>
+#include <Teuchos_CommHelpers.hpp>
+#include <Teuchos_ConfigDefs.hpp>
+#include <Teuchos_DefaultMpiComm.hpp>
 #include <Teuchos_OrdinalTraits.hpp>
 #include <Teuchos_ParameterList.hpp>
 #include <Teuchos_RCPDecl.hpp>
@@ -20,8 +24,11 @@
 #include <Xpetra_MapFactory_decl.hpp>
 #include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_MultiVectorFactory_decl.hpp>
+#include <algorithm>
+#include <numeric>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 /*!
  Implementation of NonLinearSchwarzOperator
@@ -51,7 +58,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr seria
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
       feFactoryTmp_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
-      feFactoryGhostsLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())} {
+      feFactoryGhostsLocal_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())}, totalIters_{0} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -85,6 +92,7 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
+    totalIters_ = 0;
     auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Addition");
 
     if (combineModeTemp == "Averaging") {
@@ -127,6 +135,7 @@ template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y,
                                                      SC alpha, SC beta) {
 
+    FEDD_TIMER_START(InnerTimer, " - Schwarz - inner solve");
     // Save the current input
     x_->getBlockNonConst(0)->importFromVector(x->getBlock(0), true, "Insert", "Forward");
 
@@ -224,7 +233,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         if (criterion_ == "Residual") {
             criterionValue = residual / residual0;
             FEDD::logGreen("Inner Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logGreen("Relative residual: " + std::to_string(criterionValue), this->MpiComm_);
+            FEDD::logSimple("Relative residual: " + std::to_string(criterionValue), this->MpiComm_);
             if (criterionValue < newtonTol_) {
                 // Set solution_ to g_i
                 break;
@@ -240,7 +249,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         nlIts++;
         if (criterion_ == "Update") {
             FEDD::logGreen("Inner Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logGreen("Residual of update: " + std::to_string(criterionValue), this->MpiComm_);
+            FEDD::logSimple("Residual of update: " + std::to_string(criterionValue), this->MpiComm_);
             if (criterionValue < newtonTol_) {
                 break;
             }
@@ -250,6 +259,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     // Set solution_ to g_i
     problem_->solution_->update(-ST::one(), *x_, ST::one());
     FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
+    totalIters_ += nlIts;
 
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
         TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNumIts_, std::runtime_error,
@@ -340,18 +350,35 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMul
 }
 
 template <class SC, class LO, class GO, class NO>
+Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>>
+NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobianGhosts() const {
+    return localJacobianGhosts_;
+}
+
+template <class SC, class LO, class GO, class NO>
+std::vector<SC> NonLinearSchwarzOperator<SC, LO, GO, NO>::getRunStats() const {
+
+    // Import all iteration counts to rank 0
+    std::vector<LO> totalItersVec({0});
+    if (this->MpiComm_->getRank() == 0) {
+        totalItersVec = std::vector<LO>(this->MpiComm_->getSize());
+    }
+    Teuchos::gather(&totalIters_, 1, totalItersVec.data(), 1, 0, *this->MpiComm_);
+    auto maxIters = std::max_element(totalItersVec.begin(), totalItersVec.end());
+
+    auto minIters = std::min_element(totalItersVec.begin(), totalItersVec.end());
+    SC avgIters = std::reduce(totalItersVec.begin(), totalItersVec.end());
+    avgIters = avgIters / this->MpiComm_->getSize();
+    return std::vector<SC>{static_cast<SC>(*maxIters), static_cast<SC>(*minIters), avgIters};
+}
+
+template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::describe(FancyOStream &out, const EVerbosityLevel verbLevel) const {
     TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "describe() has to be implemented properly...");
 }
 
 template <class SC, class LO, class GO, class NO> string NonLinearSchwarzOperator<SC, LO, GO, NO>::description() const {
     return "Nonlinear Schwarz Operator";
-}
-
-template <class SC, class LO, class GO, class NO>
-Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>>
-NonLinearSchwarzOperator<SC, LO, GO, NO>::getLocalJacobianGhosts() const {
-    return localJacobianGhosts_;
 }
 
 // NOTE: KHo if FROSch_OverlappingOperator is modified this functionality could be shared

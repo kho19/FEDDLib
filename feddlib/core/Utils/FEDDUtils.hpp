@@ -6,6 +6,8 @@
 #include <Xpetra_Map.hpp>
 #include <Xpetra_ImportFactory.hpp>
 #include <fstream>
+#include <iomanip>
+#include <ios>
 #include <vector>
 
 
@@ -259,19 +261,33 @@ template <typename T> void waitForGdbAttach() {
 
 inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
-            std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
+            std::cout << GREEN << "==> " << s << '\n' << RESET;
     }
 }
 
 inline void logGreenOnRank(const std::string &s, int rank, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == rank) {
-            std::cout << GREEN << '\n' << "==> " << s << '\n' << RESET;
+            std::cout << GREEN << "==> " << s << '\n' << RESET;
     }
 }
 
 inline void logSimple(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
             std::cout << "==> " << s << '\n';
+    }
+}
+
+inline void print(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm, const int width = 0,
+                   const char fill = ' ') {
+    if (comm->getRank() == 0) {
+        std::cout << std::left << std::setw(width) << std::setfill(fill)  << s;
+    }
+}
+
+inline void print(const double s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm, const int width = 0,
+                  const int precision = 5, const char fill = ' ') {
+    if (comm->getRank() == 0) {
+        std::cout << std::left << std::setw(width) << std::setfill(fill) << std::setprecision(precision) << s;
     }
 }
 
