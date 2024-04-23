@@ -5,6 +5,7 @@
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/NonLinearSolver.hpp"
 #include "feddlib/problems/specific/NonLinLaplace_decl.hpp"
+#include <Teuchos_StackedTimer.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
 
 void zeroDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = 0.; }
@@ -67,6 +68,8 @@ int main(int argc, char *argv[]) {
 
     Teuchos::RCP<const Teuchos::Comm<int>> comm = Xpetra::DefaultPlatform::getDefaultPlatform().getComm();
 
+    Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Nonlinear Schwarz solver", true));
+    TimeMonitor::setStackedTimer(stackedTimer);
     // ########################
     // Set default values for command line parameters
     // ########################
@@ -205,6 +208,10 @@ int main(int argc, char *argv[]) {
     comm->barrier();
     Teuchos::TimeMonitor::report(cout, "FEDD");
 
+    stackedTimer->stop("Nonlinear Schwarz solver");
+    StackedTimer::OutputOptions options;
+    options.output_fraction = options.output_histogram = options.output_minmax = true;
+    stackedTimer->report((std::cout), comm, options);
     // Export Solution
     bool boolExportSolution = true;
     if (boolExportSolution) {

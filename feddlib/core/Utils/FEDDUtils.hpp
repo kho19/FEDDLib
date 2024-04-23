@@ -261,19 +261,19 @@ template <typename T> void waitForGdbAttach() {
 
 inline void logGreen(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
-            std::cout << GREEN << "==> " << s << '\n' << RESET;
+            std::cout << GREEN << "==> " << s << "\n" << RESET;
     }
 }
 
 inline void logGreenOnRank(const std::string &s, int rank, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == rank) {
-            std::cout << GREEN << "==> " << s << '\n' << RESET;
+            std::cout << GREEN << "==> " << s << "\n" << RESET;
     }
 }
 
 inline void logSimple(const std::string &s, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
     if (comm->getRank() == 0) {
-            std::cout << "==> " << s << '\n';
+            std::cout << "==> " << s << "\n";
     }
 }
 

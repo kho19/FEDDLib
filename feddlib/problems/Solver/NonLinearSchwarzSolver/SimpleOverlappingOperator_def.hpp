@@ -104,14 +104,18 @@ template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, ETransp mode, SC alpha,
                                                       SC beta) const {
 
+    FEDD_TIMER_START(DFuTimer, " - Schwarz - apply DFu");
     // y = alpha*f(x) + beta*y
     // move the input to the local serial overlapping 2x ghosts map
     if (x_Ghosts_.is_null()) {
         x_Ghosts_ = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(this->OverlappingMap_, x.getNumVectors());
     } else {
+        x_Ghosts_->putScalar(0.);
         x_Ghosts_->replaceMap(this->OverlappingMap_);
     }
-    x_Ghosts_->doImport(x, *importerUniqueToGhosts_, Xpetra::CombineMode::INSERT);
+    FEDD_TIMER_START(ImportTimer, " - Schwarz - import x");
+    x_Ghosts_->doImport(x, *importerUniqueToGhosts_, Xpetra::CombineMode::ADD);
+    FEDD_TIMER_STOP(ImportTimer);
     x_Ghosts_->replaceMap(this->OverlappingMatrix_->getRowMap());
 
     //  Apply DF(u_i)
@@ -124,8 +128,6 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
             x_Ghosts_->replaceLocalValue(i, 0, ST::zero());
         }
     }
-
-    x_Ghosts_->replaceMap(this->OverlappingMatrix_->getRowMap());
 
     // Apply local solution
     // NOTE: if FROSch_OverlappingOperator->apply() did not expect a uniquely distributed input, it could be used here
@@ -144,6 +146,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
         y_unique_->putScalar(ST::zero());
     }
 
+    FEDD_TIMER_START(ExportTimer, " - Schwarz - export x");
     if (this->Combine_ == OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted) {
         GO globalID = 0;
         LO localID = 0;
@@ -169,6 +172,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
             }
         }
     }
+    FEDD_TIMER_STOP(ExportTimer);
     y.update(alpha, *y_unique_, beta);
 }
 
@@ -374,10 +378,10 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::describe(FancyOStream &out, cons
                                 << rowvals[j] << ") ";
                         }
                     } // globally or locally indexed
-                }     // vl == VERB_EXTREME
+                } // vl == VERB_EXTREME
                 out << endl;
             } // for each row r on this process
-        }     // if (myRank == curRank)
+        } // if (myRank == curRank)
 
         // Give output time to complete
         comm->barrier();

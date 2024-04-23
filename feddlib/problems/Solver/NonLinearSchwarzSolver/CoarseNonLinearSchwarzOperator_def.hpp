@@ -134,7 +134,7 @@ template <class SC, class LO, class GO, class NO>
 void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFEDD x, BlockMultiVectorPtrFEDD y,
                                                            SC alpha, SC beta) {
 
-    // TODO: kho how do we have to deal with boundary conditions here? What are the dirichletBoundaryDofs used for?
+    FEDD_TIMER_START(CoarseTimer, " - Schwarz - coarse solve");
     TEUCHOS_TEST_FOR_EXCEPTION(!x->getBlock(0)->getMapXpetra()->isSameAs(*this->getDomainMap()), std::runtime_error,
                                "input map does not correspond to domain map of nonlinear operator");
     x_ = x;

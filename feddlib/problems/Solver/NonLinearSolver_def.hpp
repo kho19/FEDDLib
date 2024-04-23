@@ -772,8 +772,8 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     print(gmresIts, mpiComm, 15, 2);
     print("\n\nInner Newton:", mpiComm, 25);
     print("min. iters.", mpiComm, 15);
+    print("mean iters.", mpiComm, 15);
     print("max. iters.", mpiComm, 15);
-    print("avg. iters.", mpiComm, 15);
     print("\n", mpiComm, 25);
     print(itersVecSubdomains.at(0), mpiComm, 15, 2);
     print(itersVecSubdomains.at(1), mpiComm, 15, 2);

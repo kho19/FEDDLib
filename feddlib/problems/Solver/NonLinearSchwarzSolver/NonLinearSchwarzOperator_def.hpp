@@ -367,9 +367,13 @@ std::vector<SC> NonLinearSchwarzOperator<SC, LO, GO, NO>::getRunStats() const {
     auto maxIters = std::max_element(totalItersVec.begin(), totalItersVec.end());
 
     auto minIters = std::min_element(totalItersVec.begin(), totalItersVec.end());
-    SC avgIters = std::reduce(totalItersVec.begin(), totalItersVec.end());
+    SC avgIters = 0;
+    for (auto val : totalItersVec) {
+        avgIters += val;
+    }
+
     avgIters = avgIters / this->MpiComm_->getSize();
-    return std::vector<SC>{static_cast<SC>(*maxIters), static_cast<SC>(*minIters), avgIters};
+    return std::vector<SC>{static_cast<SC>(*minIters), avgIters, static_cast<SC>(*maxIters)};
 }
 
 template <class SC, class LO, class GO, class NO>
