@@ -1076,14 +1076,18 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
     eindVecLocRepl->importFromVector(eindVecDistributed);
 
     eindVec.resize(eindVecLocRepl->getLocalLength());
+    // Calling getData repeatedly within the loop resulted in a huge number of stack allocations
+    auto tempView = eindVecLocRepl->getData(0);
     for (auto i = 0; i < eindVec.size(); i++) {
-        eindVec.at(i) = eindVecLocRepl->getData(0)[i];
+        eindVec.at(i) = tempView[i];
     }
 
     eptrVec.resize(eptrVecLocRepl->getLocalLength() + 1);
+    tempView = eptrVecLocRepl->getData(0);
     for (auto i = 0; i < eptrVec.size() - 1; i++) {
-        eptrVec.at(i) = eptrVecLocRepl->getData(0)[i];
+        eptrVec.at(i) = tempView[i];
     }
+
     // Add the missing size entry
     eptrVec.back() = eindVec.size();
 
@@ -1155,8 +1159,9 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
         Xpetra::ExportFactory<LO, GO, NO>::Build(locReplElemMap->getXpetraMap(), mesh->getElementMap()->getXpetraMap());
 
     // New graph into which the previous graph will be imported
-    auto newDualGraph = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(
-        mesh->getElementMap()->getXpetraMap(), mesh->getElementMap()->getXpetraMap()->getLocalNumElements());
+    auto globalMaxNumRowEntries = mesh->dualGraph_->getGlobalMaxNumRowEntries();
+    auto newDualGraph =
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(mesh->getElementMap()->getXpetraMap(), globalMaxNumRowEntries);
 
     newDualGraph->doExport(*mesh->dualGraph_, *exporter, Xpetra::INSERT);
     newDualGraph->fillComplete();
@@ -1174,7 +1179,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
 
     // Build graph with sorted map
     newDualGraph =
-        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, extendedElementMap->getLocalNumElements());
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, globalMaxNumRowEntries);
     auto importer = Xpetra::ImportFactory<LO, GO, NO>::Build(graphExtended->getRowMap(), extendedElementMap);
     newDualGraph->doImport(*graphExtended, *importer, Xpetra::ADD);
     newDualGraph->fillComplete(graphExtended->getDomainMap(), graphExtended->getRangeMap());
@@ -1184,13 +1189,15 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
     // Rebuild elements to be locally replicated. Very inefficient approach since they will be rebuilt on the
     // overlapping map later but makes use of existing functions
     auto flagsDistributed = Teuchos::rcp(new MultiVector<SC, LO, GO, NO>(mesh->getElementMap(), 1));
+    auto nonConstTempView = flagsDistributed->getDataNonConst(0);
     for (auto i = 0; i < mesh->getElementMap()->getNodeNumElements(); i++) {
-        flagsDistributed->getDataNonConst(0)[i] = elementsMesh->getElement(i).getFlag();
+        nonConstTempView[i] = elementsMesh->getElement(i).getFlag();
     }
     auto flagsLocRepl = Teuchos::rcp(new MultiVector<SC, LO, GO, NO>(locReplElemMap, 1));
     flagsLocRepl->importFromVector(flagsDistributed);
 
     mesh->elementsC_.reset(new Elements(FEType, dim));
+    tempView = flagsLocRepl->getData(0);
     for (auto i = 0; i < locReplElemMap->getNodeNumElements(); i++) {
         // Build local element and save
         std::vector<int> tmpElement;
@@ -1199,15 +1206,16 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
             // Map the node index from global to local and save
             tmpElement.push_back(eindVec.at(j));
         }
-        FiniteElement tempFE(tmpElement, flagsLocRepl->getData(0)[i]);
+        FiniteElement tempFE(tmpElement, tempView[i]);
         // NOTE KHo Surfaces are not added here for now. Since they probably will not be needed.
         mesh->elementsC_->addElement(tempFE);
     }
     // Communicate points and store in points repeated
     auto pointsRepDistributed = Teuchos::rcp(new MultiVector<SC, LO, GO, NO>(mesh->getMapRepeated(), dim));
-    for (auto i = 0; i < mesh->pointsRep_->size(); i++) {
-        for (auto j = 0; j < dim; j++) {
-            pointsRepDistributed->getDataNonConst(j)[i] = mesh->pointsRep_->at(i).at(j);
+    for (auto j = 0; j < dim; j++) {
+        nonConstTempView = pointsRepDistributed->getDataNonConst(j);
+        for (auto i = 0; i < mesh->pointsRep_->size(); i++) {
+            nonConstTempView[i] = mesh->pointsRep_->at(i).at(j);
         }
     }
     auto locReplPointMap = Teuchos::rcp(new Map<LO, GO, NO>(Xpetra::MapFactory<LO, GO, NO>::createLocalMap(
@@ -1218,22 +1226,25 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
     mesh->pointsRep_.reset(
         new std::vector<std::vector<double>>(locReplPointMap->getNodeNumElements(), std::vector<double>(dim, -1.)));
 
-    for (auto i = 0; i < mesh->pointsRep_->size(); i++) {
-        for (auto j = 0; j < dim; j++) {
-            mesh->pointsRep_->at(i).at(j) = pointsRepLocRepl->getData(j)[i];
+    for (auto j = 0; j < dim; j++) {
+        tempView = pointsRepLocRepl->getData(j);
+        for (auto i = 0; i < mesh->pointsRep_->size(); i++) {
+            mesh->pointsRep_->at(i).at(j) = tempView[i];
         }
     }
     // Communicate boundary condition flags and store in BCFlagRepeated
     auto bcFlagsDistributed = Teuchos::rcp(new MultiVector<SC, LO, GO, NO>(mesh->getMapRepeated(), 1));
+    nonConstTempView = bcFlagsDistributed->getDataNonConst(0);
     for (auto i = 0; i < mesh->bcFlagRep_->size(); i++) {
-        bcFlagsDistributed->getDataNonConst(0)[i] = mesh->bcFlagRep_->at(i);
+        nonConstTempView[i] = mesh->bcFlagRep_->at(i);
     }
     auto bcFlagsRepLocRepl = Teuchos::rcp(new MultiVector<SC, LO, GO, NO>(locReplPointMap, 1));
     bcFlagsRepLocRepl->importFromVector(bcFlagsDistributed);
     mesh->bcFlagRep_.reset(new std::vector<int>(locReplPointMap->getNodeNumElements(), 0));
 
+     tempView = bcFlagsRepLocRepl->getData(0);
     for (auto i = 0; i < mesh->bcFlagRep_->size(); i++) {
-        mesh->bcFlagRep_->at(i) = bcFlagsRepLocRepl->getData(0)[i];
+        mesh->bcFlagRep_->at(i) = tempView[i];
     }
 }
 
@@ -1368,6 +1379,8 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     for (auto i = 0; i < nvtxs; i++) {
         meshUnstr->dualGraph_->getLocalRowView(i, tempRowView);
         // Not using std::move so that dualGraph remains valid for later use
+        // TODO: see if you can make this better e.g. dynamic cast to tpetracrstgraph and then get index entries
+        // straight away
         std::copy(tempRowView.begin(), tempRowView.end(), adjncyVec.begin() + xadjVec.at(i));
     }
 
@@ -1451,9 +1464,9 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
     // Create an export object since the target map is one to one but the source map may not be
     const auto exporter =
         Xpetra::ExportFactory<LO, GO, NO>::Build(meshUnstr->elementMap_->getXpetraMap(), newElementMap);
-
     // New graph into which the previous graph will be imported
-    auto newDualGraph = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(newElementMap, newElementMap->getLocalNumElements());
+    auto globalMaxNumRowEntries = meshUnstr->dualGraph_->getGlobalMaxNumRowEntries();
+    auto newDualGraph = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(newElementMap, globalMaxNumRowEntries);
     newDualGraph->doExport(*meshUnstr->dualGraph_, *exporter, Xpetra::INSERT);
     newDualGraph->fillComplete();
 
@@ -1474,7 +1487,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
 
     // Build graph with sorted map
     newDualGraph =
-        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, extendedElementMap->getLocalNumElements());
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, globalMaxNumRowEntries);
     auto importer = Xpetra::ImportFactory<LO, GO, NO>::Build(graphExtended->getRowMap(), extendedElementMap);
     newDualGraph->doImport(*graphExtended, *importer, Xpetra::ADD);
     newDualGraph->fillComplete(graphExtended->getDomainMap(), graphExtended->getRangeMap());

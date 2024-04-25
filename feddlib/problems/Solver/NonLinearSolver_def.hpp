@@ -589,9 +589,9 @@ template <class SC, class LO, class GO, class NO>
 void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Type &problem) {
 
     auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-    print("###############################################################", problem.getComm());
-    print("############ Starting nonlinear Schwarz solve ... #############", problem.getComm());
-    print("###############################################################", problem.getComm());
+    print("###############################################################\n", problem.getComm());
+    print("############ Starting nonlinear Schwarz solve ... #############\n", problem.getComm());
+    print("###############################################################\n", problem.getComm());
 
     // Define nonlinear Schwarz operator
     auto domainVec = problem.getDomainVector();
