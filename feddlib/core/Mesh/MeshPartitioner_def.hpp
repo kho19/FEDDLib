@@ -1081,7 +1081,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
     }
 
     eptrVec.resize(eptrVecLocRepl->getLocalLength() + 1);
-    for (auto i = 0; i < eptrVec.size(); i++) {
+    for (auto i = 0; i < eptrVec.size() - 1; i++) {
         eptrVec.at(i) = eptrVecLocRepl->getData(0)[i];
     }
     // Add the missing size entry
