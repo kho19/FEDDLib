@@ -801,7 +801,6 @@ int NonLinearSolver<SC, LO, GO, NO>::solveThyraLinOp(Teuchos::RCP<const Thyra::L
     auto pListThyraSolver =
         sublist(sublist(parameterList, "Outer Newton Nonlinear Schwarz"), "Thyra Solver Outer Newton");
 
-    writeParameterListToXmlFile(*pListThyraSolver, "thyra_solver_xml_file.xml");
     auto linearSolverBuilder = Teuchos::rcp(new Stratimikos::DefaultLinearSolverBuilder());
     linearSolverBuilder->setParameterList(pListThyraSolver);
     auto lowsFactory = linearSolverBuilder->createLinearSolveStrategy("");
