@@ -291,8 +291,8 @@ inline void print(const double s, const Teuchos::RCP<const Teuchos::Comm<int>> &
     }
 }
 
-template <typename T> void logVec(const std::vector<T> vec, const Teuchos::RCP<const Teuchos::Comm<int>> &comm) {
-    if (comm->getRank() == 0) {
+template <typename T> void logVec(const std::vector<T> vec, const Teuchos::RCP<const Teuchos::Comm<int>> &comm, int rank = 0) {
+    if (comm->getRank() == rank) {
         std::cout << "[ ";
         for (auto it = vec.begin(); it != vec.end() - 1; it++) {
             std::cout << *it << ", ";

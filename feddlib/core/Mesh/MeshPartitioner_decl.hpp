@@ -152,11 +152,20 @@ public:
     void readMesh(const int volumeID = 10);
 
     /**
-     * \brief Build dual graph of the mesh provided where the mesh distributed
-     * Essentialy a wrapper of the metis function METIS_MeshToDual()
-     * Note: CSR (compressed sparse row), CRS (compressed row storage), Yale format are all the same
+     * \brief Build distributed dual graph of a distribued mesh with the specified overlap. Since METIS (works
+     * sequentially) is used to construct the dual graph, the distributed mesh is first locally replicated and the
+     * entire dual graph is constructed on every rank before being distributed. This is inefficient but gets the job
+     * done (eventually).
      */
-    void buildOverlappingDualGraphFromDistributed(const int meshNumber, const int overlap);
+    void buildOverlappingDualGraphFromDistributedMETIS(const int meshNumber, const int overlap);
+
+    /**
+     * \brief Build distributed dual graph of a distribued mesh with the specified overlap. ParMETIS enables distributed
+     * construction of the dual graph making this method much more efficient than
+     * buildOverlappingDualGraphFromDistributedMETIS()
+     */
+    void buildOverlappingDualGraphFromDistributedParMETIS(const int meshNumber, const int overlap);
+
 
     /**
      * \brief Build dual graph of the mesh provided

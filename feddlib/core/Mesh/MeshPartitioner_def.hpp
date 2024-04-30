@@ -36,6 +36,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 /*!
  Definition of MeshPartitioner
@@ -1021,7 +1022,7 @@ template <class SC, class LO, class GO, class NO> void MeshPartitioner<SC, LO, G
 }
 
 template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(const int meshNumber, const int overlap) {
+void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributedMETIS(const int meshNumber, const int overlap) {
 
     typedef Teuchos::OrdinalTraits<GO> OTGO;
     const auto myRank = this->comm_->getRank();
@@ -1246,6 +1247,137 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributed(c
     for (auto i = 0; i < mesh->bcFlagRep_->size(); i++) {
         mesh->bcFlagRep_->at(i) = tempView[i];
     }
+}
+
+template <class SC, class LO, class GO, class NO>
+void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributedParMETIS(const int meshNumber,
+                                                                                       const int overlap) {
+
+    typedef Teuchos::OrdinalTraits<GO> OTGO;
+    const auto myRank = this->comm_->getRank();
+
+#ifdef UNDERLYING_LIB_TPETRA
+    const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;
+    const string underlyingLib = "Tpetra";
+#endif
+    const auto mesh = this->domains_[meshNumber]->getMesh();
+    TEUCHOS_TEST_FOR_EXCEPTION(mesh.is_null(), std::runtime_error, "No mesh to work with.");
+
+    // Setup for paritioning with ParMETIS
+    vec_idx_Type eptrVec(0); // Vector for local elements idx
+    vec_idx_Type eindVec(0); // Vector for local node idx
+
+    // Distributed elements
+    const auto elementsMesh = mesh->getElementsC();
+    // Fill the arrays
+    makeContinuousElements(elementsMesh, eindVec, eptrVec);
+
+    // Map the local point indices to global indices for ParMETIS
+    for (auto &val : eindVec) {
+        val = mesh->getMapRepeated()->getGlobalElement(val);
+    }
+    // TODO: kho need to make this use subset of ranks at some point for coarse solving
+    /* idx_t nparts = get<1>(rankRanges_[meshNumber]) - get<0>(rankRanges_[meshNumber]) + 1; */
+    idx_t nparts = comm_->getSize();
+    vec_idx_Type elmdistVec(nparts + 1);
+    // Build the element distribution array as described in the ParMETIS manual
+    for (auto i = 0; i < nparts + 1; i++) {
+        elmdistVec.at(i) = i * (mesh->getNumElements());
+    }
+
+    auto eptr = &eptrVec.at(0);
+    auto eind = &eindVec.at(0);
+    auto elmdist = &elmdistVec.at(0);
+
+    // Number of common nodes required to classify two elements as neighbours: min(ncommon, n1-1, n2-1)
+    idx_t ncommon;
+    const auto dim = mesh->getDimension();
+    const auto FEType = domains_[meshNumber]->getFEType();
+    if (dim == 2) {
+        if (FEType == "P1") {
+            ncommon = 2;
+        } else if (FEType == "P2") {
+            ncommon = 3;
+        }
+    } else if (dim == 3) {
+        if (FEType == "P1") {
+            ncommon = 3;
+        } else if (FEType == "P2") {
+            ncommon = 6;
+        }
+    } else {
+        TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "Wrong Dimension.");
+    }
+    // We want zero based indexing
+    idx_t numflag = 0;
+
+    // Need an actual MPI communicator, which is only possible if calling the program with MPI. The Trilinos serial MPI
+    // wrapper will not work.
+    auto mpiComm = Teuchos::rcp_dynamic_cast<const Teuchos::MpiComm<int>>(comm_);
+    TEUCHOS_TEST_FOR_EXCEPTION(mpiComm.is_null(), std::runtime_error,
+                               "Cannot use ParMETIS without MPI. Call you application with e.g. mpirun");
+    auto rawMpiComm = (*mpiComm->getRawMpiComm().get())();
+
+    // Arrays for storing the partition
+    // ParMETIS allocates these using malloc
+    idx_t *xadj;
+    idx_t *adjncy;
+
+    if (myRank == 0) {
+        cout << "--- Building dual graph with METIS ...";
+    }
+    const auto returnCode = ParMETIS_V3_Mesh2Dual(elmdist, eptr, eind, &numflag, &ncommon, &xadj, &adjncy, &rawMpiComm);
+
+    if (myRank == 0) {
+        cout << "\n--\t Metis return code: " << returnCode;
+        cout << "\n--- done" << endl;
+    }
+
+    // Size of adjncy is stored in last entry of xadj
+    // Build a unique list of the global element ids that are connected to elements on this rank in the dual graph for
+    // building the column map of the dual graph
+    std::vector<GO> adjncyVec(xadj[mesh->getNumElements()]);
+    for (auto i = 0; i < adjncyVec.size(); i++) {
+        adjncyVec.at(i) = adjncy[i];
+    }
+    make_unique(adjncyVec);
+    auto dualGraphColMap = Xpetra::MapFactory<LO, GO, NO>::Build(underlyingLibType, mesh->getNumElementsGlobal(),
+                                                                 Teuchos::ArrayView<const GO>(adjncyVec), 0, comm_);
+
+    // Copy idx_t arrays to ArrayRCP arrays required by graph constructor
+    auto xadjArrayRCP = Teuchos::ArrayRCP<size_t>(mesh->getNumElements() + 1);
+    for (auto i = 0; i < xadjArrayRCP.size(); i++) {
+        xadjArrayRCP[i] = xadj[i];
+    }
+
+    // Get the local element indices for building dual graph
+    auto adjncyArrayRCP = Teuchos::ArrayRCP<LO>(xadj[mesh->getNumElements()]);
+    for (auto i = 0; i < adjncyArrayRCP.size(); i++) {
+        adjncyArrayRCP[i] = dualGraphColMap->getLocalElement(adjncy[i]);
+    }
+    mesh->dualGraph_ = Xpetra::CrsGraphFactory<LO, GO, NO>::Build(mesh->getElementMap()->getXpetraMap(),
+                                                                  dualGraphColMap, xadjArrayRCP, adjncyArrayRCP);
+    mesh->dualGraph_->fillComplete();
+    METIS_Free(xadj);
+    METIS_Free(adjncy);
+
+    // Cast to pointer-to-const for FROSch function
+    auto graphExtended = Teuchos::rcp_implicit_cast<const Xpetra::CrsGraph<LO, GO, NO>>(mesh->dualGraph_);
+
+    // Extend overlap by specified number of times
+    for (auto i = 0; i < overlap; i++) {
+        ExtendOverlapByOneLayer(graphExtended, graphExtended);
+    }
+
+    // Store the interior of the subdomain to differentiate the border
+    auto extendedElementMap = FROSch::SortMapByGlobalIndex(graphExtended->getRowMap());
+
+    // Build graph with sorted map
+    mesh->dualGraph_ =
+        Xpetra::CrsGraphFactory<LO, GO, NO>::Build(extendedElementMap, mesh->dualGraph_->getGlobalMaxNumRowEntries());
+    auto importer = Xpetra::ImportFactory<LO, GO, NO>::Build(graphExtended->getRowMap(), extendedElementMap);
+    mesh->dualGraph_->doImport(*graphExtended, *importer, Xpetra::ADD);
+    mesh->dualGraph_->fillComplete(graphExtended->getDomainMap(), graphExtended->getRangeMap());
 }
 
 template <class SC, class LO, class GO, class NO>
