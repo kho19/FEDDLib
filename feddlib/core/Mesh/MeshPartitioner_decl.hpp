@@ -2,8 +2,10 @@
 #define MeshPartitioner_decl_hpp
 
 #include "feddlib/core/FE/Domain.hpp"
+#include "feddlib/core/FE/FiniteElement.hpp"
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
+#include <Teuchos_ArrayRCPDecl.hpp>
 #include <Xpetra_CrsGraphFactory.hpp>
 
 #define FEDD_HAVE_METIS
@@ -191,17 +193,30 @@ public:
     void buildSubdomainFEsAndNodeLists(const int meshNumber);
 
     /**
-     * \brief Returns the indices corresponding to a complete layer of vertices around the domain described redundantly
-     * by indicesIn and dualGraph
+     * \brief Fills the overlapping with ghosts member variables of mesh based on the overlapping distribution of mesh->dualGraph_
      */
-    void buildGhostLayer(vec_GO_Type &pointIndices, vec_int_Type &elementIndices,
-                         GraphPtr_Type dualGraph, ElementsPtr_Type elementList);
+    void buildOverlappingSubdomainFromDualGraph(const int meshNumber);
 
-private:    
-    
-	/*! 
-		\brief Function called internally to read and partition mesh i of domain i
-	*/
+    /**
+     * \brief Communicates missing element data from overlapping element that are off rank
+     */
+    Teuchos::RCP<MultiVector<SC, LO, GO, NO>> communicateMissingElements(const int meshNumber, MapConstPtr_Type newMap);
+
+    /**
+     * \brief Returns the global indices corresponding to a complete layer of vertices around the domain described by dualGraph
+     * nodeIndices: global indices of the nodes that lie in the local subdomain
+     * elementIndices: global indices of the elements that lie in the local subdomain
+     * elementList: FEDD class storing FiniteElement objects that is required to determine if an element touches the local subdomain or not
+     * elementsAreDistributed: Are the elements stored locally replicated (e.g. after reading in a mesh and partitining
+     * with METIS) or are they distributed (e.g. when building a structured graph)
+     */
+    void buildGhostLayer(vec_GO_Type &nodeIndices, vec_GO_Type &elementIndices, GraphPtr_Type dualGraph,
+                         ElementsPtr_Type elementList, bool elementsAreDistributed = false);
+
+  private:
+    /*!
+            \brief Function called internally to read and partition mesh i of domain i
+    */
     void readAndPartitionMesh( int meshNumber );
     
     ParameterListPtr_Type pList_;
