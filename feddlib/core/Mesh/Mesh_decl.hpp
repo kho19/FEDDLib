@@ -23,7 +23,7 @@ Defintion of Mesh
 @copyright CH
 */
 
-// TODO KHo public data fields and corresponding getter functions are superfluous. Either make members private or remove
+// TODO: kho public data fields and corresponding getter functions are superfluous. Either make members private or remove
 // getters
 namespace FEDD {
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no> class Mesh {
@@ -201,6 +201,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     tuple_intint_Type rankRange_;
 
     // ######################## Nonlinear Schwarz related member variables
+    // TODO: kho at some point it could be an idea to move these variables to the nonlinear Schwarz solver
     // dual graph of the interior (excluding ghost layer) of the overlapping subdomain
     GraphPtr_Type dualGraph_;
     // Overlapping partition of nodes for nonlinear Schwarz method

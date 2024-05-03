@@ -1,5 +1,5 @@
-#ifndef SimpleOVERLAPPINGOPERATOR_DECL_HPP
-#define SimpleOVERLAPPINGOPERATOR_DECL_HPP
+#ifndef SIMPLEOVERLAPPINGOPERATOR_DECL_HPP
+#define SIMPLEOVERLAPPINGOPERATOR_DECL_HPP
 
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/DefaultTypeDefs.hpp"

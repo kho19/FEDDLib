@@ -161,12 +161,12 @@ int main(int argc, char *argv[]) {
         }
         partitionerP1 = MeshPartitioner<SC, LO, GO, NO>(domainP1Array, pListPartitioner, "P1", dim);
         partitionerP1.buildOverlappingDualGraphFromDistributedParMETIS(0, 1);
-        partitionerP1.buildOverlappingSubdomainFromDualGraph(0);
+        partitionerP1.buildSubdomainFromDualGraphStructured(0);
     } else if (!meshType.compare("unstructured")) {
         partitionerP1.readMesh();
         partitionerP1.buildDualGraph(0);
         partitionerP1.partitionDualGraphWithOverlap(0, overlap);
-    partitionerP1.buildSubdomainFEsAndNodeLists(0);
+    partitionerP1.buildSubdomainFromDualGraphUnstructured(0);
     }
     domain = domainP1;
     // ########################

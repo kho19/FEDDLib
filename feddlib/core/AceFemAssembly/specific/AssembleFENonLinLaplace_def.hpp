@@ -204,7 +204,7 @@ void AssembleFENonLinLaplace<SC, LO, GO, NO>::assembleRHS() {
 }
 /*!
  \brief Building Transformation
-TODO KHo This function could be outsourced to helper?
+TODO: kho This function could be outsourced to helper?
 @param[in] &B The transformation matrix to be constructed
 */
 
@@ -229,7 +229,7 @@ void AssembleFENonLinLaplace<SC, LO, GO, NO>::buildTransformation(
 
 /*!
  \brief performs matrix multiplication of two small matrices Binv * dPhiIn
-TODO KHo This function could be outsourced to helper? Does not need to be in each
+TODO: kho This function could be outsourced to helper? Does not need to be in each
 assemble class
  @param[in] dPhiIn
  */

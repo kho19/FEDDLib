@@ -384,7 +384,7 @@ void MeshPartitioner<SC, LO, GO, NO>::readAndPartitionMesh(int meshNumber) {
                 pointsRepIndices.push_back(eind[j]); // Ids of element nodes, globalIDs
         }
     }
-    // TODO KHo why erase the vectors here? eind points to the underlying array and is used later.
+    // TODO: kho why erase the vectors here? eind points to the underlying array and is used later.
     eind_vec.erase(eind_vec.begin(), eind_vec.end());
     eptr_vec.erase(eptr_vec.begin(), eptr_vec.end());
 
@@ -1627,7 +1627,7 @@ void MeshPartitioner<SC, LO, GO, NO>::partitionDualGraphWithOverlap(const int me
 }
 
 template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int meshNumber) {
+void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFromDualGraphUnstructured(const int meshNumber) {
 
     typedef Teuchos::OrdinalTraits<GO> OTGO;
 #ifdef UNDERLYING_LIB_TPETRA
@@ -1798,7 +1798,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFEsAndNodeLists(const int me
 }
 
 template <class SC, class LO, class GO, class NO>
-void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingSubdomainFromDualGraph(const int meshNumber) {
+void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFromDualGraphStructured(const int meshNumber) {
 #ifdef UNDERLYING_LIB_TPETRA
     const string underlyingLib = "Tpetra";
     const Xpetra::UnderlyingLib underlyingLibType = Xpetra::UseTpetra;

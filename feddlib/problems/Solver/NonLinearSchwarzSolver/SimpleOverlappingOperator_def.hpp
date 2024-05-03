@@ -98,7 +98,7 @@ template <class SC, class LO, class GO, class NO> int SimpleOverlappingOperator<
     return 0;
 }
 
-// TODO: kho need to implement the apply method since each matrix in overlapping subdomain is different i.e.
+// Need to implement the apply method since each matrix in overlapping subdomain is different i.e.
 // overlappingOperator apply method cannot be used
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, ETransp mode, SC alpha,
@@ -119,6 +119,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     x_Ghosts_->replaceMap(this->OverlappingMatrix_->getRowMap());
 
     //  Apply DF(u_i)
+  //TODO:kho this operator still needs to be fixed for dofs > 1
     this->OverlappingMatrix_->apply(*x_Ghosts_, *x_Ghosts_, mode, ST::one(), ST::zero());
 
     // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do

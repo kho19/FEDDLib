@@ -190,12 +190,12 @@ public:
      * \brief Fills the elementsC_ and the pointsRep_ member of a mesh corresponding to a (potentially overlapping)
      * partition of the dual graph
      */
-    void buildSubdomainFEsAndNodeLists(const int meshNumber);
+    void buildSubdomainFromDualGraphUnstructured(const int meshNumber);
 
     /**
      * \brief Fills the overlapping with ghosts member variables of mesh based on the overlapping distribution of mesh->dualGraph_
      */
-    void buildOverlappingSubdomainFromDualGraph(const int meshNumber);
+    void buildSubdomainFromDualGraphStructured(const int meshNumber);
 
     /**
      * \brief Communicates missing element data from overlapping element that are off rank

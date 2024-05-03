@@ -109,7 +109,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
                                          implicit_cast<ConstXMultiVectorPtr>(nodeList));
 
     // Build the vector of Dirichlet node indices
-
     auto dirichletBoundaryDofsVec = Teuchos::rcp(new std::vector<GO>(0));
     int block = 0;
     int loc = 0;
@@ -197,7 +196,6 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         problem_->assemble("Newton");
 
         // After this rows corresponding to Dirichlet nodes are unity and residualVec_ = 0
-        // TODO: kho is this the right way to deal with boundary conditions?
         problem_->setBoundariesSystem();
 
         // Update the coarse matrix and the coarse solver (coarse factorization)

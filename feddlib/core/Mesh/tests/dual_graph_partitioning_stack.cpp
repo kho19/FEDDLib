@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
     partitioner.readMesh();
     partitioner.buildDualGraph(0);
     partitioner.partitionDualGraphWithOverlap(0, 0);
-    partitioner.buildSubdomainFEsAndNodeLists(0);
+    partitioner.buildSubdomainFromDualGraphUnstructured(0);
 
     auto elementMap = domain->getElementMap();
     auto mapRepeated = domain->getMapRepeated();
