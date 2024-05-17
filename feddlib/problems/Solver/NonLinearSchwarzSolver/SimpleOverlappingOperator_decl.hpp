@@ -138,8 +138,6 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     ConstXMapPtr uniqueMap_;
     // Importers
     XImportPtr importerUniqueToGhosts_;
-    // Exporters
-    XExportPtr exporterGhostsToUnique_;
 
     // Temp. vectors for local results
     mutable XMultiVectorPtr x_Ghosts_;

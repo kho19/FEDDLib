@@ -29,7 +29,6 @@
  */
 
 namespace FROSch {
-
 // TODO: these should be moved into the nonlinear Schwarz solver once created
 enum class CombinationMode { Averaging, Full, Restricted };
 
@@ -140,9 +139,9 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     ConstXMapPtr mapVecFieldOverlappingGhostsLocal_;
 
     // Newtons method params
-    double newtonTol_;
+    double relNewtonTol_;
+    double absNewtonTol_;
     int maxNumIts_;
-    std::string criterion_;
 
     // Recombination mode. [Restricted, Averaging, Addition]
     CombinationMode combinationMode_;

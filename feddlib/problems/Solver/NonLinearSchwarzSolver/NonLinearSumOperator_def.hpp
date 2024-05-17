@@ -7,9 +7,7 @@
 #include <Teuchos_BLAS_types.hpp>
 #include <Teuchos_RCPDecl.hpp>
 /*!
- Implementation of NonlinearSumOperator which extends the FROSch sum operator to allow non-const apply() methods
-
- @brief Implements the coarse correction T_0 from the nonlinear Schwarz approach
+ @brief Implementation of NonlinearSumOperator which extends the FROSch sum operator to allow non-const apply() methods
  @author Kyrill Ho
  @version 1.0
  @copyright KH

@@ -137,9 +137,9 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     BlockMatrixPtrFEDD coarseJacobian_;
 
     // Newtons method params
-    double newtonTol_;
+    double relNewtonTol_;
+    double absNewtonTol_;
     int maxNumIts_;
-    std::string criterion_;
     // Temp. problem state params
     BlockMultiVectorPtrFEDD solutionTmp_;
     BlockMatrixPtrFEDD systemTmp_;

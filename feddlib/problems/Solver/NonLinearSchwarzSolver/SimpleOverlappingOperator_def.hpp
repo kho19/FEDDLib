@@ -30,7 +30,7 @@ template <class SC, class LO, class GO, class NO>
 SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(NonLinearProblemPtrFEDD problem,
                                                                      ParameterListPtr parameterList)
     : OverlappingOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
-      uniqueMap_(), importerUniqueToGhosts_(), exporterGhostsToUnique_(), x_Ghosts_(), y_unique_(), y_Ghosts_(),
+      uniqueMap_(), importerUniqueToGhosts_(), x_Ghosts_(), y_unique_(), y_Ghosts_(),
       bcFlagOverlappingGhosts_(), problem_(problem) {
     // Override the combine mode of the FROSch operator base object from the nonlinear Schwarz configuration
     if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Averaging")) {
@@ -73,9 +73,6 @@ int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(CommPtr serialComm, Co
 
     // Initialize importer Ghosts -> Ghosts
     importerUniqueToGhosts_ = Xpetra::ImportFactory<LO, GO>::Build(uniqueMap, overlappingGhostsMap);
-    if (this->Combine_ != OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted) {
-        exporterGhostsToUnique_ = Xpetra::ExportFactory<LO, GO>::Build(overlappingGhostsMap, uniqueMap);
-    }
 
     //  Calculate overlap multiplicity if needed. OverlappingMap without ghosts required for this
     this->OverlappingMap_ = overlappingMap;
@@ -165,8 +162,11 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     } else {
         // Use export operation here since oldSolution is on overlapping map and newSolution on the unique map
         // Use Insert since newSolution does not contain any values yet
-        y_unique_->doExport(*y_Ghosts_, *exporterGhostsToUnique_, Xpetra::CombineMode::ADD);
+        FEDD_TIMER_START(ExportTimer, " - Schwarz - export x");
+        y_unique_->doExport(*y_Ghosts_, *importerUniqueToGhosts_, ADD);
+        FEDD_TIMER_STOP(ExportTimer);
     }
+    FEDD_TIMER_START(AveragingTimer, " - Schwarz - average overlap");
     if (this->Combine_ == OverlappingOperator<SC, LO, GO, NO>::CombinationType::Averaging) {
         auto scaling = this->Multiplicity_->getData(0);
         for (auto i = 0; i < y_unique_->getNumVectors(); i++) {
@@ -176,7 +176,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
             }
         }
     }
-    FEDD_TIMER_STOP(ExportTimer);
+    FEDD_TIMER_STOP(AveragingTimer);
     y.update(alpha, *y_unique_, beta);
 }
 

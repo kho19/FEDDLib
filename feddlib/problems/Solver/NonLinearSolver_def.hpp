@@ -703,7 +703,9 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     // Outer Newton iterations
     while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
         logGreen("Starting outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
-        logSimple("Residual: " + std::to_string(relativeResidual), mpiComm);
+        print("Rel. residual: ", mpiComm);
+        print(relativeResidual, mpiComm);
+        print("\n", mpiComm);
 
         // Compute the residual of the alternative problem \mathcal{F} = g
         // g fulfills the boundary conditions
@@ -771,7 +773,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto itersVecCoarse = coarseOperator->getRunStats();
     print("================= Nonlinear Schwarz terminated =========================", mpiComm);
     print("\n\nOuter Newton:", mpiComm, 25);
-    print("Residual:", mpiComm, 15);
+    print("Rel. residual:", mpiComm, 15);
     print("Iters:", mpiComm, 15);
     print("GMRES iters:", mpiComm, 15);
     print("\n", mpiComm, 25);

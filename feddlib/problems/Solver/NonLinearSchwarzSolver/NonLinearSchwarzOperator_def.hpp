@@ -25,6 +25,7 @@
 #include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_MultiVectorFactory_decl.hpp>
 #include <algorithm>
+#include <iterator>
 #include <numeric>
 #include <stdexcept>
 #include <string>
@@ -52,7 +53,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr seria
       problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       localJacobianGhosts_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, mapOverlappingGhostsLocal_{},
-      mapVecFieldOverlappingGhostsLocal_{}, newtonTol_{}, maxNumIts_{}, criterion_{""},
+      mapVecFieldOverlappingGhostsLocal_{}, relNewtonTol_{}, absNewtonTol_{}, maxNumIts_{},
       combinationMode_{CombinationMode::Full},
       multiplicity_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, mapRepeatedMpiTmp_{},
       mapUniqueMpiTmp_{}, mapVecFieldRepeatedMpiTmp_{}, mapVecFieldUniqueMpiTmp_{}, pointsRepTmp_{}, pointsUniTmp_{},
@@ -60,8 +61,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr seria
       systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       rhsTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      sourceTermTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      rhsFuncVecTmp_{0},
+      sourceTermTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, rhsFuncVecTmp_{0},
       previousSolutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       residualVecTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       feFactoryTmp_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
@@ -100,12 +100,13 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     auto mesh = domainVec.at(0)->getMesh();
 
     // Extract info from parameterList
-    newtonTol_ =
+    relNewtonTol_ =
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
+    absNewtonTol_ =
+        problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Absolute Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
-    criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
     totalIters_ = 0;
-    auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Addition");
+    auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Full");
 
     if (combineModeTemp == "Averaging") {
         combinationMode_ = CombinationMode::Averaging;
@@ -256,9 +257,9 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     // Solve local nonlinear problems
     bool verbose = problem_->getVerbose();
     double residual0 = 1.;
-    double residual = 1.;
+    double relResidual = 1.;
+    double absResidual = 1.;
     int nlIts = 0;
-    double criterionValue = 1.;
 
     // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
     // this = alpha*xTmp + beta*this
@@ -272,24 +273,24 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
     // It would be more efficient to only store u on the boundary and update this value in each iteration
     while (nlIts < maxNumIts_) {
-
         problem_->calculateNonLinResidualVec("reverse");
 
-        if (criterion_ == "Residual") {
-            residual = problem_->calculateResidualNorm();
-        }
+        absResidual = problem_->calculateResidualNorm();
 
         if (nlIts == 0) {
-            residual0 = residual;
+            residual0 = absResidual;
         }
 
-        if (criterion_ == "Residual") {
-            criterionValue = residual / residual0;
-            FEDD::logGreen("Inner Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logSimple("Relative residual: " + std::to_string(criterionValue), this->MpiComm_);
-            if (criterionValue < newtonTol_) {
-                break;
-            }
+        relResidual = absResidual / residual0;
+        FEDD::logGreen("Inner Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
+        FEDD::print("Absolute residual: ", this->MpiComm_);
+        FEDD::print(absResidual, this->MpiComm_, 0, 10);
+        FEDD::print("\nRelative residual: ", this->MpiComm_);
+        FEDD::print(relResidual, this->MpiComm_, 0, 10);
+        FEDD::print("\n", this->MpiComm_);
+
+        if (relResidual < relNewtonTol_ || absResidual < absNewtonTol_) {
+            break;
         }
 
         problem_->assemble("Newton");
@@ -297,20 +298,16 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         // After this rows corresponding to Dirichlet nodes are unity and residualVec_ = 0
         problem_->setBoundariesSystem();
 
-        problem_->solveAndUpdate(criterion_, criterionValue);
+        // Passing relative residual here is not correct since the residual of the update is returned
+        // Not using this value here though so it does not matter
+        problem_->solveAndUpdate("", absResidual);
+
         nlIts++;
-        if (criterion_ == "Update") {
-            FEDD::logGreen("Inner Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logSimple("Residual of update: " + std::to_string(criterionValue), this->MpiComm_);
-            if (criterionValue < newtonTol_) {
-                break;
-            }
-        }
     }
 
     // Set solution_ to g_i
     problem_->solution_->update(-ST::one(), *x_, ST::one());
-    FEDD::logGreen("Total inner Newton iters: " + std::to_string(nlIts), this->MpiComm_);
+    FEDD::logGreen("==> Terminated inner Newton", this->MpiComm_);
     totalIters_ += nlIts;
 
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {

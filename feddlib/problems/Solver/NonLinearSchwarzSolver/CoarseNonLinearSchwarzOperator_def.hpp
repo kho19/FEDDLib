@@ -49,8 +49,8 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(N
     : IPOUHarmonicCoarseOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
       problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      coarseJacobian_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, newtonTol_{}, maxNumIts_{},
-      criterion_{""}, solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      coarseJacobian_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, relNewtonTol_{}, absNewtonTol_{},
+      maxNumIts_{}, solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, totalIters_{0} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
@@ -74,10 +74,11 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     auto repeatedMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
 
     // Extract info from parameterList
-    newtonTol_ =
+    relNewtonTol_ =
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
+    absNewtonTol_ =
+        problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Absolute Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
-    criterion_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Criterion", "Residual");
     auto dimension = problem_->getParameterList()->sublist("Parameter").get("Dimension", 2);
     auto dofsPerNode = problem_->getDofsPerNode(0);
     totalIters_ = 0;
@@ -148,9 +149,9 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     // Solve coarse nonlinear problem
     bool verbose = problem_->getVerbose();
     double residual0 = 1.;
-    double residual = 1.;
+    double relResidual = 1.;
+    double absResidual = 1.;
     int nlIts = 0;
-    double criterionValue = 1.;
     auto coarseResidualVec =
         Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
     auto coarseDeltaG0 =
@@ -174,25 +175,26 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         // Restrict the residual to the coarse space
         this->applyPhiT(*problem_->getResidualVector()->getBlock(0)->getXpetraMultiVector(), *coarseResidualVec);
 
-        if (criterion_ == "Residual") {
-            Teuchos::Array<SC> residualArray(1);
-            coarseResidualVec->norm2(residualArray());
-            residual = residualArray[0];
-        }
+        Teuchos::Array<SC> residualArray(1);
+        coarseResidualVec->norm2(residualArray());
+        absResidual = residualArray[0];
 
         if (nlIts == 0) {
-            residual0 = residual;
+            residual0 = absResidual;
         }
 
-        if (criterion_ == "Residual") {
-            criterionValue = residual / residual0;
-            FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logGreen("Relative residual: " + std::to_string(criterionValue), this->MpiComm_);
+        relResidual = absResidual / residual0;
+        FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
+        FEDD::print("Absolute residual: ", this->MpiComm_);
+        FEDD::print(absResidual, this->MpiComm_, 0, 10);
+        FEDD::print("\nRelative residual: ", this->MpiComm_);
+        FEDD::print(relResidual, this->MpiComm_, 0, 10);
+        FEDD::print("\n", this->MpiComm_);
 
-            if (criterionValue < newtonTol_) {
-                break;
-            }
+        if (relResidual < relNewtonTol_ || absResidual < absNewtonTol_) {
+            break;
         }
+
         problem_->assemble("Newton");
 
         // After this rows corresponding to Dirichlet nodes are unity and residualVec_ = 0
@@ -215,19 +217,12 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         problem_->solution_->update(ST::one(), *deltaG0, ST::one());
 
         nlIts++;
-        if (criterion_ == "Update") {
-            FEDD::logGreen("Coarse Newton iteration: " + std::to_string(nlIts), this->MpiComm_);
-            FEDD::logGreen("Residual of update: " + std::to_string(criterionValue), this->MpiComm_);
-            if (criterionValue < newtonTol_) {
-                break;
-            }
-        }
     }
 
     // Set solution_ to g_i
     problem_->solution_->update(-ST::one(), *x_, ST::one());
     totalIters_ += nlIts;
-    FEDD::logGreen("Total coarse Newton iters: " + std::to_string(nlIts), this->MpiComm_);
+    FEDD::logGreen("==> Terminated coarse Newton", this->MpiComm_);
 
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
         TEUCHOS_TEST_FOR_EXCEPTION(nlIts == maxNumIts_, std::runtime_error,
