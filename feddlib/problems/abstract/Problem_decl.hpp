@@ -227,7 +227,6 @@ public:
     FEFacPtr_Type feFactory_;
     mutable BCConstPtr_Type         bcFactory_;
     
-protected:
 
     mutable ParameterListPtr_Type	parameterList_;
     mutable DomainConstPtr_vec_Type domainPtr_vec_;
@@ -238,6 +237,7 @@ protected:
     
     /*!  sourceTerm_: Is a source term or a surface integral. Fill parasSourceFunc_ for additional parameters */
     BlockMultiVectorPtr_Type    sourceTerm_; // BlockMV of all assembled RHS functions
+protected:
     
 #ifdef FEDD_TIMER
     TimePtr_Type solveProblemTimer_;

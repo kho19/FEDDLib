@@ -97,7 +97,7 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
-    SimpleOverlappingOperator(ConstXMatrixPtr k, ParameterListPtr parameterList);
+    SimpleOverlappingOperator(NonLinearProblemPtrFEDD problem, ParameterListPtr parameterList);
 
     ~SimpleOverlappingOperator() = default;
 
@@ -130,6 +130,8 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
   private:
     // Tangent of the nonlinear Schwarz operator is saved in this->OverlappingMatrix_ which lives on
     // serial version of OverlappingMap_
+    // This operator does not know whether the system it is being applied to is a block system or not. This information
+    // is only necessary in operators that do assembly. The following maps are intitialized to the correct dof maps
 
     // Distributed maps
     // GhostsMap is stored in this->OverlappingMap_
@@ -147,6 +149,9 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     // Boundary condition flags for recognizing the ghost boundary
     FEDD::vec_int_ptr_Type bcFlagOverlappingGhosts_;
 
+    // We need to know how many dofs per node there are. This is stored in the problem object. We keep a pointer to this
+    // object here to avoid having to copy the vector around.
+    NonLinearProblemPtrFEDD problem_;
     // Recombination mode. [Restricted, Averaging, Addition]
     /* RecombinationMode recombinationMode_; */
     /* BlockMultiVectorPtrFEDD multiplicity_; */

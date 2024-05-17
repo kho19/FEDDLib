@@ -131,6 +131,38 @@ void x5(double* x, double* res, double t, const double* parameters){
     return;
 }
 
+void rhsY(double *x, double *res, double *parameters) {
+    // parameters[0] is the time, not needed here
+    std::cout << "Param 0: " << parameters[0] << ", param 1: " << parameters[1] << ", param 2: " << parameters[2] << ", param 3: " << parameters[3]<< std::endl;
+    res[0] = 0.;
+    double force = parameters[1];
+
+    if (parameters[3] == 3)
+        res[1] = force;
+    else
+        res[1] = 0.;
+
+    return;
+}
+
+void rhsYZ(double *x, double *res, double *parameters) {
+    // parameters[0] is the time, not needed here
+    res[0] = 0.;
+    double force = parameters[1];
+
+    if (parameters[2] == 5)
+        res[1] = force;
+    else
+        res[1] = 0.;
+
+    if (parameters[2] == 4)
+        res[2] = force;
+    else
+        res[2] = 0.;
+
+    return;
+}
+
 typedef unsigned UN;
 typedef default_sc SC;
 typedef default_lo LO;
@@ -255,7 +287,7 @@ int main(int argc, char *argv[]) {
                 Teuchos::RCP<BCBuilder<SC,LO,GO,NO> > bcFactory(new BCBuilder<SC,LO,GO,NO>( ));
                 if (meshType == "structured") {
                     if (dim == 2)
-                        bcFactory->addBC(zeroDirichlet2D, 2, 0, domain, "Dirichlet", dim);
+                        bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim);
                     else if (dim == 3)
                         bcFactory->addBC(zeroDirichlet3D, 2, 0, domain, "Dirichlet", dim);
                 }
@@ -279,9 +311,10 @@ int main(int argc, char *argv[]) {
                     elasticity.addBoundaries( bcFactory );
 
                     if (dim==2)
-                        elasticity.addRhsFunction( rhs2D );
+                        elasticity.addRhsFunction( rhsY );
+                        /* elasticity.addRhsFunction( rhs2D ); */
                     else if(dim==3)
-                        elasticity.addRhsFunction( rhsX );
+                        elasticity.addRhsFunction( rhsY );
 
                     double force = parameterListAll->sublist("Parameter").get("Volume force",0.);
                     double degree = 0;

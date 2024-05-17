@@ -1071,5 +1071,43 @@ template <class SC, class LO, class GO, class NO>
 typename Domain<SC, LO, GO, NO>::GraphPtr_Type Domain<SC, LO, GO, NO>::getDualGraph() const {
     return mesh_->getDualGraph();
 }
+
+template <class SC, class LO, class GO, class NO>
+typename Domain<SC,LO,GO,NO>::MapConstPtr_Type Domain<SC,LO,GO,NO>::getMapVecFieldOverlapping() const{
+    if ( mapVecFieldOverlapping_.is_null() ) {
+        MapConstPtr_Type mapTmp = this->getMapOverlapping();
+        mapVecFieldOverlapping_ = mapTmp->buildVecFieldMap(dim_);
+    }
+    return mapVecFieldOverlapping_;
+}
+
+template <class SC, class LO, class GO, class NO>
+typename Domain<SC,LO,GO,NO>::MapConstPtr_Type Domain<SC,LO,GO,NO>::getMapVecFieldOverlappingGhosts() const{
+    if ( mapVecFieldOverlappingGhosts_.is_null() ) {
+        MapConstPtr_Type mapTmp = this->getMapOverlappingGhosts();
+        mapVecFieldOverlappingGhosts_ = mapTmp->buildVecFieldMap(dim_);
+    }
+    return mapVecFieldOverlappingGhosts_;
+}
+
+template <class SC, class LO, class GO, class NO>
+void Domain<SC, LO, GO, NO>::replaceRepeatedMembers(const MapPtr_Type newVecFieldMap, const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                                                  const vec_int_ptr_Type newBCs) const {
+    // Ensure that all members being replaced have the same number of local elements
+    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(), std::runtime_error,
+                               "New memembers must have the same number of local elements");
+    this->mapVecFieldRepeated_ = newVecFieldMap;
+    mesh_->replaceRepeatedMembers(newMap, newPoints, newBCs);
+}
+
+template <class SC, class LO, class GO, class NO>
+void Domain<SC, LO, GO, NO>::replaceUniqueMembers(const MapPtr_Type newVecFieldMap, const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                                                  const vec_int_ptr_Type newBCs) const {
+    // Ensure that all members being replaced have the same number of local elements
+    TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(), std::runtime_error,
+                               "New memembers must have the same number of local elements");
+    this->mapVecFieldUnique_ = newVecFieldMap;
+    mesh_->replaceUniqueMembers(newMap, newPoints, newBCs);
+}
 } // namespace FEDD
 #endif

@@ -1472,8 +1472,8 @@ void Helper::getQuadratureValues(int dim,
             }
         }
     }
-    
-}
 }
 
+static void currentSolutionDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
 
+} // namespace FEDD

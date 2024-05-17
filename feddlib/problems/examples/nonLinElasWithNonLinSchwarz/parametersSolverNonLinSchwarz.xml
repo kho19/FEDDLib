@@ -1,0 +1,97 @@
+<ParameterList name="solver">
+
+  <Parameter name="Nonlin Schwarz Variant" type="string" value="ASPEN" />
+  <Parameter name="Levels" type="int" value="1" />
+  <Parameter name="Overlap" type="int" value="2" />
+  <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
+  <Parameter name="Zero Initial Guess" type="bool" value="false" />
+
+  <ParameterList name="ThyraSolver"> <!-- Solver used by the FEDD::Problem object in the inner Newton -->
+    <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
+    <ParameterList name="Linear Solver Types">
+      <ParameterList name="Amesos2">
+        <Parameter name="Solver Type" type="string" value="KLU2" />
+      </ParameterList>
+    </ParameterList>
+  </ParameterList>
+
+  <ParameterList name="Outer Newton Nonlinear Schwarz">
+    <ParameterList name="Thyra Solver Outer Newton">
+      <Parameter name="Linear Solver Type" type="string" value="Belos" />
+      <ParameterList name="Linear Solver Types">
+        <ParameterList name="Belos">
+          <Parameter name="Solver Type" type="string" value="Block GMRES" />
+          <ParameterList name="Solver Types">
+            <ParameterList name="Block GMRES">
+              <Parameter name="Convergence Tolerance" type="double" value="1e-6" />
+              <Parameter name="Maximum Iterations" type="int" value="100" />
+              <Parameter name="Num Blocks" type="int" value="100" />
+              <Parameter name="Block Size" type="int" value="1" />
+              <Parameter name="Output Frequency" type="int" value="1" />
+              <Parameter name="Show Maximum Residual Norm Only" type="bool" value="1" />
+            </ParameterList>
+          </ParameterList>
+          <ParameterList name="VerboseObject">
+            <Parameter name="Verbosity Level" type="string" value="medium" />
+          </ParameterList>
+        </ParameterList>
+      </ParameterList>
+      <Parameter name="Preconditioner Type" type="string" value="None" />
+    </ParameterList>
+  </ParameterList>
+
+  <ParameterList name="Inner Newton Nonlinear Schwarz">
+    <Parameter name="Relative Tolerance" type="double" value="1.0e-5" />
+    <Parameter name="Max Iterations" type="int" value="10" />
+    <Parameter name="Criterion" type="string" value="Residual" />
+  </ParameterList>
+
+  <ParameterList name="Coarse Nonlinear Schwarz"> <!-- Same list as passed to
+    IPOUHarmonicCoarseOperator in FROSch -->
+
+    <Parameter name="Store Phi" type="bool" value="true" />
+    <Parameter name="Null Space Type" type="string" value="Linear Elasticity" />
+
+    <ParameterList name="Blocks"> <!-- Probably so that different types of coarse space can be
+      applied to each block -->
+      <ParameterList name="1">
+        <Parameter name="Use For Coarse Space" type="bool" value="true" />
+        <ParameterList name="InterfacePartitionOfUnity">
+          <Parameter name="Type" type="string" value="RGDSW" />
+          <ParameterList name="RGDSW">
+            <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph" />
+            <Parameter name="Type" type="string" value="Full" />
+            <ParameterList name="Custom">
+              <Parameter name="Vertices" type="bool" value="true" />
+              <Parameter name="ShortEdges" type="bool" value="true" />
+              <Parameter name="StraightEdges" type="bool" value="true" />
+              <Parameter name="Edges" type="bool" value="true" />
+              <Parameter name="Faces" type="bool" value="true" />
+            </ParameterList>
+          </ParameterList>
+        </ParameterList>
+      </ParameterList>
+    </ParameterList>
+
+    <ParameterList name="ExtensionSolver"> <!-- Solver for harmonic extensions from interface into
+      subdomain interior -->
+      <Parameter name="SolverType" type="string" value="Amesos2" />
+      <Parameter name="Solver" type="string" value="Klu" />
+    </ParameterList>
+
+    <ParameterList name="Distribution"> <!-- How the coarse problem is redistributed for solving -->
+      <Parameter name="Type" type="string" value="linear" />
+      <Parameter name="NumProcs" type="int" value="1" />
+      <Parameter name="Factor" type="double" value="1.0" />
+      <Parameter name="GatheringSteps" type="int" value="1" />
+      <ParameterList name="Gathering Communication">
+        <Parameter name="Send type" type="string" value="Send" />
+      </ParameterList>
+    </ParameterList>
+
+    <ParameterList name="CoarseSolver">
+      <Parameter name="SolverType" type="string" value="Amesos2" />
+      <Parameter name="Solver" type="string" value="Klu" />
+    </ParameterList>
+  </ParameterList>
+</ParameterList>

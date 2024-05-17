@@ -82,6 +82,8 @@ public:
     
     Teuchos::RCP<Thyra::PreconditionerBase<SC> > create_W_prec() const;
     
+    void reInitSpecificProblemVectors(const MapConstPtr_Type newMap) override;
+
 private:
     
     virtual void evalModelImpl(

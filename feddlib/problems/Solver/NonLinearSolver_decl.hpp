@@ -32,6 +32,8 @@ public:
     typedef typename Problem_Type::Matrix_Type Matrix_Type;
     typedef typename Problem_Type::MatrixPtr_Type MatrixPtr_Type;
 
+    typedef Teuchos::RCP<const Map<LO, GO, NO>> MapConstPtr_Type;
+
     typedef MultiVector<SC, LO, GO, NO> MultiVector_Type;
     typedef Teuchos::RCP<MultiVector_Type> MultiVectorPtr_Type;
     typedef Teuchos::RCP<const MultiVector_Type> MultiVectorConstPtr_Type;

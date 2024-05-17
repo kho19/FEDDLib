@@ -1,7 +1,8 @@
-#ifndef SimpleOVERLAPPINGOPERATPR_DEF_HPP
-#define SimpleOVERLAPPINGOPERATPR_DEF_HPP
+#ifndef SIMPLEOVERLAPPINGOPERATPR_DEF_HPP
+#define SIMPLEOVERLAPPINGOPERATPR_DEF_HPP
 
 #include "SimpleOverlappingOperator_decl.hpp"
+#include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <FROSch_OverlappingOperator_decl.hpp>
 #include <Teuchos_Array.hpp>
 #include <Teuchos_ArrayViewDecl.hpp>
@@ -26,9 +27,11 @@
 namespace FROSch {
 
 template <class SC, class LO, class GO, class NO>
-SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(ConstXMatrixPtr k, ParameterListPtr parameterList)
-    : OverlappingOperator<SC, LO, GO, NO>(k, parameterList), uniqueMap_(), importerUniqueToGhosts_(),
-      exporterGhostsToUnique_(), x_Ghosts_(), y_unique_(), y_Ghosts_(), bcFlagOverlappingGhosts_() {
+SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(NonLinearProblemPtrFEDD problem,
+                                                                     ParameterListPtr parameterList)
+    : OverlappingOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
+      uniqueMap_(), importerUniqueToGhosts_(), exporterGhostsToUnique_(), x_Ghosts_(), y_unique_(), y_Ghosts_(),
+      bcFlagOverlappingGhosts_(), problem_(problem) {
     // Override the combine mode of the FROSch operator base object from the nonlinear Schwarz configuration
     if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Averaging")) {
         this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Averaging;
@@ -106,7 +109,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
 
     FEDD_TIMER_START(DFuTimer, " - Schwarz - apply DFu");
     // y = alpha*f(x) + beta*y
-    // move the input to the local serial overlapping 2x ghosts map
+    // move the input to the local serial overlapping ghosts map
     if (x_Ghosts_.is_null()) {
         x_Ghosts_ = Xpetra::MultiVectorFactory<SC, LO, GO, NO>::Build(this->OverlappingMap_, x.getNumVectors());
     } else {
@@ -119,14 +122,14 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     x_Ghosts_->replaceMap(this->OverlappingMatrix_->getRowMap());
 
     //  Apply DF(u_i)
-  //TODO:kho this operator still needs to be fixed for dofs > 1
     this->OverlappingMatrix_->apply(*x_Ghosts_, *x_Ghosts_, mode, ST::one(), ST::zero());
-
-    // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do
+   // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do
     // not affect the solution
     for (int i = 0; i < bcFlagOverlappingGhosts_->size(); i++) {
         if (bcFlagOverlappingGhosts_->at(i) == -99) {
-            x_Ghosts_->replaceLocalValue(i, 0, ST::zero());
+            for (int j = 0; j < problem_->getDofsPerNode(0); j++) {
+                x_Ghosts_->replaceLocalValue(problem_->getDofsPerNode(0) * i + j, 0, ST::zero());
+            }
         }
     }
 

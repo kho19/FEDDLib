@@ -99,6 +99,7 @@ void NonLinElasticity<SC,LO,GO,NO>::reAssemble(std::string type) const {
         
         MultiVectorPtr_Type f = Teuchos::rcp( new MultiVector_Type( this->getDomain(0)->getMapVecFieldRepeated(), 1 ) );
         MatrixPtr_Type W = Teuchos::rcp(new Matrix_Type( this->getDomain(0)->getMapVecFieldUnique(), this->getDomain(0)->getDimension() * this->getDomain(0)->getApproxEntriesPerRow() ) );
+    //TODO: kho is it necessary to assemble Jacobian and rhs at the same time or is this done for efficiency? (not iterate over all elements twice)
         this->feFactory_->assemblyElasticityJacobianAndStressAceFEM(this->dim_, this->getDomain(0)->getFEType(), W, f, u_rep_, this->parameterList_, C_);
         
         MultiVectorPtr_Type fUnique = Teuchos::rcp( new MultiVector_Type( this->getDomain(0)->getMapVecFieldUnique(), 1 ) );
@@ -274,6 +275,11 @@ void NonLinElasticity<SC,LO,GO,NO>::calculateNonLinResidualVec(std::string type,
     // this might be set again by the TimeProblem after adding of M*u
     this->bcFactory_->setBCMinusVector( this->residualVec_, this->solution_, time );
     
+}
+
+template <class SC, class LO, class GO, class NO>
+void NonLinElasticity<SC, LO, GO, NO>::reInitSpecificProblemVectors(const MapConstPtr_Type newMap) {
+    this->u_rep_ = Teuchos::rcp(new MultiVector_Type(newMap));
 }
 }
 #endif

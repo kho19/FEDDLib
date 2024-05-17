@@ -172,10 +172,11 @@ public:
                             int Degree)
     { TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "getPhiGlobal not implemented yet.");};
 
+    // Required for setting the Dirichlet BC on the ghost points to the current global solution in nonlinear Schwarz
+    static void currentSolutionDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
 
-private:
-	
-	Helper(){};
+  private:
+    Helper(){};
 
 };
 }

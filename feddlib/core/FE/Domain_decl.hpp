@@ -546,19 +546,21 @@ public:
    /// @param name export suffix to identify flags
    void exportNodeFlags(string name = "default");
 
-   
+   // ################### Nonlinear Schwarz functions ######################
+   MapConstPtr_Type getMapOverlappingGhosts() const;
+   MapConstPtr_Type getMapOverlapping() const;
+   GraphPtr_Type getDualGraph() const;
+   MapConstPtr_Type getMapVecFieldOverlapping() const;
+   MapConstPtr_Type getMapVecFieldOverlappingGhosts() const;
+   void replaceRepeatedMembers(const MapPtr_Type newVecFieldMap, const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                               const vec_int_ptr_Type newBCs) const;
+   void replaceUniqueMembers(const MapPtr_Type newVecFieldMap, const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
+                             const vec_int_ptr_Type newBCs) const;
+   void setComm(CommConstPtr_Type newComm) const { this->comm_ = newComm; }
 
-// ################### Nonlinear Schwarz functions ######################
-MapConstPtr_Type getMapOverlappingGhosts() const;
-MapConstPtr_Type getMapOverlapping() const;
+   /* ----------------------------------------------------------------------------------------*/
 
-GraphPtr_Type getDualGraph() const;
-
-void setComm(CommConstPtr_Type newComm) const {this->comm_ = newComm;}
-
-/* ----------------------------------------------------------------------------------------*/
-
-   private:
+ private:
    mutable  CommConstPtr_Type comm_; // underlying comm
    MeshPtr_Type mesh_;      // underlying mesh as base class mesh type. usually underlying mesh is either structured or unstructured
    int dim_;                // dimension
@@ -597,7 +599,11 @@ void setComm(CommConstPtr_Type newComm) const {this->comm_ = newComm;}
    std::string meshType_;
    int numProcsCoarseSolve_;
    int flagsOption_;
+   // ######################## Nonlinear Schwarz related member variables
+   mutable MapPtr_Type mapVecFieldOverlapping_;
+   mutable MapPtr_Type mapVecFieldOverlappingGhosts_;
 
+   /* ###################################################################### */
     };
 }
 

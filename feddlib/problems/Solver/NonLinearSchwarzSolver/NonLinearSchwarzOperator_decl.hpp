@@ -137,6 +137,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     BlockMatrixPtrFEDD localJacobianGhosts_;
     // Local (serial) overlapping map object with one ghost layer
     ConstXMapPtr mapOverlappingGhostsLocal_;
+    ConstXMapPtr mapVecFieldOverlappingGhostsLocal_;
 
     // Newtons method params
     double newtonTol_;
@@ -150,6 +151,9 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
     ConstXMapPtr mapRepeatedMpiTmp_;
     ConstXMapPtr mapUniqueMpiTmp_;
+    ConstXMapPtr mapVecFieldRepeatedMpiTmp_;
+    ConstXMapPtr mapVecFieldUniqueMpiTmp_;
+
     // Vectors for saving repeated and unique points
     FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
     FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
@@ -159,8 +163,13 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     // Vector of elements for saving elementsC_
     Teuchos::RCP<FEDD::Elements> elementsCTmp_;
     // Current global solution of the problem
-    BlockMultiVectorPtrFEDD solutionTmp_;
     BlockMatrixPtrFEDD systemTmp_;
+    BlockMultiVectorPtrFEDD solutionTmp_;
+    BlockMultiVectorPtrFEDD rhsTmp_;
+    BlockMultiVectorPtrFEDD sourceTermTmp_;
+    std::vector<FEDD::RhsFunc_Type> rhsFuncVecTmp_;
+    BlockMultiVectorPtrFEDD previousSolutionTmp_;
+    BlockMultiVectorPtrFEDD residualVecTmp_;
     // FE assembly factory for global and local assembly
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryTmp_;
     Teuchos::RCP<FEDD::FE<SC, LO, GO, NO>> feFactoryGhostsLocal_;
