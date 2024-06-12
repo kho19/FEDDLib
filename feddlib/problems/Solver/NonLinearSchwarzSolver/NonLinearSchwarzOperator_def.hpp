@@ -261,14 +261,14 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     double absResidual = 1.;
     int nlIts = 0;
 
-    // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
-    // this = alpha*xTmp + beta*this
-    problem_->solution_->update(ST::one(), *x_, ST::one());
-
-    // Need to initialize the rhs_ and set boundary values in rhs_
+   // Need to initialize the rhs_ and set boundary values in rhs_
     problem_->assemble();
     problem_->setBoundaries();
 
+    // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
+    // this = alpha*xTmp + beta*this
+    problem_->solution_->update(ST::one(), *x_, ST::one());
+ 
     // Need to update solution_ within each iteration to assemble at u+P_i*g_i but update only g_i
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
     // It would be more efficient to only store u on the boundary and update this value in each iteration
@@ -478,7 +478,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
 
     auto y_unique = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(mapUnique));
     if (combinationMode_ == CombinationMode::Restricted) {
-        GO globID = 0;
+        GO globalID = 0;
         LO localID = 0;
         //  MultiVector insert mode does not add any entries i.e. only one entry from a rank is taken
         //  Export in Forward mode: the rank which is chosen to give value seems random
@@ -491,8 +491,8 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
         for (auto i = 0; i < y_unique->getNumVectors(); i++) {
             auto y_overlappingData = y_overlapping->getData(i);
             for (auto j = 0; j < mapUnique->getNodeNumElements(); j++) {
-                globID = mapUnique->getGlobalElement(j);
-                localID = mapOverlappingGhosts->getLocalElement(globID);
+                globalID = mapUnique->getGlobalElement(j);
+                localID = mapOverlappingGhosts->getLocalElement(globalID);
                 y_unique->getDataNonConst(i)[j] = y_overlappingData[localID];
             }
         }

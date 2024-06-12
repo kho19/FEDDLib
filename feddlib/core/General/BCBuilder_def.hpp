@@ -204,12 +204,14 @@ template<class SC,class LO,class GO,class NO>
 void BCBuilder<SC,LO,GO,NO>::setDirichletBoundaryFromExternal(Teuchos::ArrayRCP<SC>& values/*values will be set to this vector*/, LO index, int loc, double time, std::string type, Teuchos::ArrayRCP<SC> valuesSubstract) const{
     
     Teuchos::ArrayRCP<SC> valuesEx = vecExternalSol_[loc]->getDataNonConst(0);//We assume that our Multivector only has one column
+    int dofs = resultPtr_->size();
         
-    (*pointPtr_)[0] = valuesEx[index]; // laplace solution in current point
+    for (int i = 0; i < dofs; i++) {
+        (*pointPtr_)[i] = valuesEx[dofs*index + i]; // laplace solution in current point
+    }
                 
     vecBC_func_.at(loc)( &((*pointPtr_)[0]), &((*resultPtr_)[0]), time, &(vecBC_Parameters_.at(loc).at(0)));
         
-    int dofs = resultPtr_->size();
     if ( !vecBCType_.at(loc).compare("Dirichlet") ) {
         if (type == "standard") {
             for (int dd=0; dd < dofs; dd++){

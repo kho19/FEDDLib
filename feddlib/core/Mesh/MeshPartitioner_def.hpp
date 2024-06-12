@@ -1207,8 +1207,9 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributedME
             // Map the node index from global to local and save
             tmpElement.push_back(eindVec.at(j));
         }
+        // NOTE: kho element flags are needed by some problem types. Might need to communicate them and add them here
         FiniteElement tempFE(tmpElement, tempView[i]);
-        // NOTE KHo Surfaces are not added here for now. Since they probably will not be needed.
+        // NOTE: kho Surfaces are not added here for now. Since they probably will not be needed.
         mesh->elementsC_->addElement(tempFE);
     }
     // Communicate nodes and store in points repeated
@@ -1741,7 +1742,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFromDualGraphUnstructured(co
         meshUnstr->bcFlagOverlappingGhosts_->at(i) = flags.at(nodeIDcont);
         // This only works because index lists are ordered
         if (*interiorIt != nodeIDcont) {
-            // Only set ghost flag for nodes that are not on the real Dirichlet boundary
+            // Also set ghost flag for nodes that are on the real Dirichlet boundary
             // Further volume flags must be added here if used in the mesh
             meshUnstr->bcFlagOverlappingGhosts_->at(i) = -99;
         } else {
@@ -1878,7 +1879,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFromDualGraphStructured(cons
             mesh->bcFlagOverlappingGhosts_->at(localNodeIndex) = missingElementsMV->getData(nodesPerElement + j)[i];
             // This only works because index lists are ordered
             if (!std::binary_search(nodesOverlappingIndices.begin(), nodesOverlappingIndices.end(), globalNodeIndex)) {
-                // Only set ghost flag for nodes that are not on the real Dirichlet boundary
+                // Also set ghost flag for nodes that are on the real Dirichlet boundary
                 // Further volume flags must be added here if used in the mesh
                 mesh->bcFlagOverlappingGhosts_->at(localNodeIndex) = -99;
             }

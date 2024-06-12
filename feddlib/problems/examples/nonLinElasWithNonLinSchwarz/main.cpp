@@ -11,23 +11,13 @@
 #include "Teuchos_XMLParameterListHelpers.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
-
-/*!
-main of nonlinear elasticity problem
-
- @brief NonLinElasticity main
- @author Christian Hochmuth
- @version 1.0
- @copyright CH
- */
+#include <vector>
 
 using namespace std;
 
 // Apply a force in y direction if the boundary element flag is three
 // parameters contains [time, force, degree (unused), flag]
 void rhsY(double *x, double *res, double *parameters) {
-    // parameters[0] is the time, not needed here
-    std::cout << "Param 0: " << parameters[0] << ", param 1: " << parameters[1] << ", param 2: " << parameters[2] << ", param 3: " << parameters[3]<< std::endl;
     res[0] = 0.;
     double force = parameters[1];
 
@@ -86,63 +76,6 @@ void zeroDirichlet3D(double *x, double *res, double t, const double *parameters)
     return;
 }
 
-void oneBCVector(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 1.;
-    res[1] = 1.;
-    res[2] = 1.;
-
-    return;
-}
-
-void twoBCVector(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 2.;
-    res[1] = 2.;
-    res[2] = 2.;
-
-    return;
-}
-
-void threeBCVector(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 3.;
-    res[1] = 3.;
-    res[2] = 3.;
-
-    return;
-}
-
-void x1(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = -11.;
-
-    return;
-}
-void x2(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 2.;
-
-    return;
-}
-void x3(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 100.;
-
-    return;
-}
-void x4(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 4.;
-
-    return;
-}
-void x5(double *x, double *res, double t, const double *parameters) {
-
-    res[0] = 5.;
-
-    return;
-}
 
 typedef unsigned UN;
 typedef default_sc SC;
@@ -175,7 +108,6 @@ int main(int argc, char *argv[]) {
     myCLP.setOption("solverfile", &xmlSolverFile, ".xml file with Inputparameters.");
     string xmlSchwarzSolverFile = "parametersSolverNonLinSchwarz.xml";
     myCLP.setOption("schwarzsolverfile", &xmlSchwarzSolverFile, ".xml file with Inputparameters.");
-
 
     myCLP.recogniseAllOptions(true);
     myCLP.throwExceptions(false);
@@ -237,8 +169,6 @@ int main(int argc, char *argv[]) {
     MeshPartitioner<SC, LO, GO, NO> partitionerP1(domainP1Array, pListPartitioner, "P1", dim);
 
     if (!meshType.compare("structured")) {
-        TEUCHOS_TEST_FOR_EXCEPTION(size % minNumberSubdomains != 0, std::logic_error,
-                                   "Wrong number of processors for structured mesh.");
         if (dim == 2) {
             n = (int)(std::pow(size, 1 / 2.) + 100. * Teuchos::ScalarTraits<double>::eps()); // 1/H
             std::vector<double> x(2);
@@ -258,7 +188,7 @@ int main(int argc, char *argv[]) {
             domainP1->buildMesh(1, "Square", dim, FEType, n, m, numProcsCoarseSolve);
         }
         partitionerP1 = MeshPartitioner<SC, LO, GO, NO>(domainP1Array, pListPartitioner, "P1", dim);
-        partitionerP1.buildOverlappingDualGraphFromDistributedParMETIS(0, 1);
+        partitionerP1.buildOverlappingDualGraphFromDistributedParMETIS(0, overlap);
         partitionerP1.buildSubdomainFromDualGraphStructured(0);
     } else if (!meshType.compare("unstructured")) {
         partitionerP1.readMesh();
@@ -276,14 +206,17 @@ int main(int argc, char *argv[]) {
             bcFactory->addBC(zeroDirichlet3D, 2, 0, domain, "Dirichlet", dim);
     } else if (meshType == "unstructured") {
         if (dim == 2)
+            // For unstructured meshes and surface force set zeroBC at flag 1 since the surface force is applied at flag
+            // 3. For volume forces any boundary flag can be taken. This will affect which side of the geometry is
+            // stationary
             bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim);
         else if (dim == 3)
             bcFactory->addBC(zeroDirichlet3D, 1, 0, domain, "Dirichlet", dim);
     }
     // The current global solution must be set as the Dirichlet BC on the ghost nodes for nonlinear Schwarz solver to
     // correctly solve on the subdomains
-    bcFactory->addBC(Helper::currentSolutionDirichlet, -99, 0, domain, "Dirichlet", 1);
-
+    std::vector<double> funcParams {static_cast<double>(dim)};
+    bcFactory->addBC(Helper::currentSolutionDirichlet, -99, 0, domain, "Dirichlet", dim, funcParams);
 
     NonLinElasticity<SC, LO, GO, NO> elasticity(domain, FEType, parameterListAll);
 
@@ -295,7 +228,11 @@ int main(int argc, char *argv[]) {
     elasticity.addBoundaries(bcFactory);
 
     if (dim == 2)
+        // Use this in conjuction with Source Type = Surface. It applies a force only on the surface elements
+        // corresponding to the specified boundary
         /* elasticity.addRhsFunction(rhsY); */
+        // Use this in conjuction with Source Type = Volume. It applies a constant force at every node
+        // Applying an elongating force results in a stable solution for much larger deformations than a compressing force
         elasticity.addRhsFunction(rhs2D);
     else if (dim == 3)
         elasticity.addRhsFunction(rhsX);

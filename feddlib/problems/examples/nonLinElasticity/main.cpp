@@ -133,7 +133,6 @@ void x5(double* x, double* res, double t, const double* parameters){
 
 void rhsY(double *x, double *res, double *parameters) {
     // parameters[0] is the time, not needed here
-    std::cout << "Param 0: " << parameters[0] << ", param 1: " << parameters[1] << ", param 2: " << parameters[2] << ", param 3: " << parameters[3]<< std::endl;
     res[0] = 0.;
     double force = parameters[1];
 
@@ -287,9 +286,9 @@ int main(int argc, char *argv[]) {
                 Teuchos::RCP<BCBuilder<SC,LO,GO,NO> > bcFactory(new BCBuilder<SC,LO,GO,NO>( ));
                 if (meshType == "structured") {
                     if (dim == 2)
-                        bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim);
-                    else if (dim == 3)
-                        bcFactory->addBC(zeroDirichlet3D, 2, 0, domain, "Dirichlet", dim);
+                        bcFactory->addBC(zeroDirichlet2D, 2, 0, domain, "Dirichlet", dim);
+                    /* else if (dim == 3) */
+                    /*     bcFactory->addBC(zeroDirichlet3D, 2, 0, domain, "Dirichlet", dim); */
                 }
                 else if (meshType == "unstructured") {
                     if (dim == 2)
@@ -311,8 +310,8 @@ int main(int argc, char *argv[]) {
                     elasticity.addBoundaries( bcFactory );
 
                     if (dim==2)
-                        elasticity.addRhsFunction( rhsY );
-                        /* elasticity.addRhsFunction( rhs2D ); */
+                        /* elasticity.addRhsFunction( rhsY ); */
+                        elasticity.addRhsFunction( rhs2D );
                     else if(dim==3)
                         elasticity.addRhsFunction( rhsY );
 
