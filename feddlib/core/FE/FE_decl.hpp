@@ -86,6 +86,9 @@ class FE {
 	typedef AssembleFENavierStokes<SC,LO,GO,NO> AssembleFENavierStokes_Type;
     typedef Teuchos::RCP<AssembleFENavierStokes_Type> AssembleFENavierStokesPtr_Type;
 
+    typedef AssembleFEGeneralizedNewtonian<SC,LO,GO,NO> AssembleFEGeneralizedNewtonian_Type;
+    typedef Teuchos::RCP<AssembleFEGeneralizedNewtonian_Type> AssembleFEGeneralizedNewtonianPtr_Type;
+
     typedef AssembleFE_SCI_SMC_Active_Growth_Reorientation<SC,LO,GO,NO> AssembleFE_SCI_SMC_Active_Growth_Reorientation_Type;
     typedef Teuchos::RCP<AssembleFE_SCI_SMC_Active_Growth_Reorientation_Type> AssembleFE_SCI_SMC_Active_Growth_Reorientation_Ptr_Type;
 
@@ -439,6 +442,12 @@ class FE {
                                            bool callFillComplete = true);
 
 
+    /// @brief Assembling Pressure Integral to determine pressure mean value
+    /// @param dim Dimension
+    /// @param FEType FEType
+    /// @param a Resultin matrix with one column
+    void assemblyPressureMeanValue(int dim, std::string FEType, MatrixPtr_Type a, MatrixPtr_Type aT);
+
     void assemblyRHS(int dim,
                      std::string FEType,
                      MultiVectorPtr_Type  a,
@@ -584,6 +593,23 @@ class FE {
                                     int FELocExternal=-1);
                                     
     void checkMeshOrientation(int dim,string FEType);
+
+    /* Given a converged velocity solution this function 
+       computes the averaged viscosity estimate in each cell at the center of mass 
+       - CM stands for center of mass so the values at the node are averaged to obtain one value
+    */
+    void computeSteadyViscosityFE_CM(int dim,
+	                                    string FETypeVelocity,
+	                                    string FETypePressure,
+										int dofsVelocity,
+										int dofsPressure,
+										MultiVectorPtr_Type u_rep,
+										MultiVectorPtr_Type p_rep,
+ 										ParameterListPtr_Type params);
+
+    // Write prostprocessing output fields like e.g. the viscosity based on  velocity, pressure .. solution
+    // inside this BMV -> For visualization or postprocessing                                
+    BlockMultiVectorPtr_Type const_output_fields;
 
 
 /* ----------------------------------------------------------------------------------------*/

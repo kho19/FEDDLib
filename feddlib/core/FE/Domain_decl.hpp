@@ -334,6 +334,14 @@ public:
 
     */
     void setMesh(MeshUnstrPtr_Type meshUnstr); 
+
+     /*!
+         \brief Initialize dummy mesh for i.e. lagrange multiplier that only represents on 'point' in that sense. i.e. for setting pressure mean value in P2-P1 stokes problem. This is necassary if a variable does not live on a mesh. 
+         \brief This function might not be necassary in the long run.
+         @param[in] map for this dummy mesh. Maybe the mesh only represents one point (i.e. for lagrange mp). 
+
+    */
+    void initDummyMesh(MapPtr_Type map); 
     
     /*!
          \brief  Build unique node and dof interfaceMap in interface numbering
@@ -532,7 +540,7 @@ public:
    void exportMesh(bool exportEdges = false, bool exportSurfaces=false, string exportMesh="export.mesh");
 
      /*!
-         \brief Option of preprocessing mesh by making consistent outward normal and/or consisten element orientation
+         \brief Option of preprocessing mesh by making consistent outward normal and/or consistent element orientation, where we always have positive det of transformation to reference element
          @param correctSurfaceNormals bool for normal direction
          @param correctElementDirection bool for surface direction
     */ 
@@ -546,6 +554,14 @@ public:
    /// @param name export suffix to identify flags
    void exportNodeFlags(string name = "default");
 
+   /// @brief Exporting Paraview file displaying surface normals of the underlying mesh. As we are generally not able to plot only the surfaces, the normals are displayed in each node. This means, that at corners, the visualization is incorrect (i.e. node belongs to surfaces which are in different directions)
+   /// @param name export suffix to identify flags
+   void exportSurfaceNormals(string name = "default");
+
+   /// @brief Exporting Paraview file displaying element volume of underlying mesh. 
+   /// @param name export suffix to identify flags
+   void exportElementOrientation(string name = "default");
+
    // ################### Nonlinear Schwarz functions ######################
    MapConstPtr_Type getMapOverlappingGhosts() const;
    MapConstPtr_Type getMapOverlapping() const;
@@ -557,8 +573,7 @@ public:
    void replaceUniqueMembers(const MapPtr_Type newVecFieldMap, const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
                              const vec_int_ptr_Type newBCs) const;
    void setComm(CommConstPtr_Type newComm) const { this->comm_ = newComm; }
-
-   /* ----------------------------------------------------------------------------------------*/
+      /* ----------------------------------------------------------------------------------------*/
 
  private:
    mutable  CommConstPtr_Type comm_; // underlying comm
@@ -605,6 +620,7 @@ public:
 
    /* ###################################################################### */
     };
+   
 }
 
 #endif

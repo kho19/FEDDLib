@@ -66,62 +66,112 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
      Delete all member variables
      */
     void deleteData();
+    
+    /// @brief Setting input parameterlist to be parameterlist here
+    /// @param pL 
+    void setParameterList( ParameterListPtr_Type& pL );
 
-    void setParameterList(ParameterListPtr_Type &pL);
-
-    ParameterListConstPtr_Type getParameterList() const;
-
+    /// @brief Getter for paramaeterlist that is set here
+    /// @return pL
+    ParameterListConstPtr_Type getParameterList( ) const;
+    
+    /// @brief Getter for element flags
+    /// @return elements flag vector -- not sure if this is used anywhere
     vec_int_ptr_Type getElementsFlag() const;
-
+    
+    /// @brief Getter for unique node map
+    /// @return mapUnique_
     MapConstPtr_Type getMapUnique() const;
-
+    
+    /// @brief Getter for repeated node mal
+    /// @return mapRepeated_
     MapConstPtr_Type getMapRepeated() const;
 
-    GraphPtr_Type getDualGraph() const;
-
+    /// @brief Getter for unique node P2 map. Dont know what this is for exactly. Think this object is empty
+    /// @return 
     MapConstPtr_Type getMapUniqueP2() const;
-
+    
+    /// @brief Getter for repeated node P2 map. Dont know what this is for exactly. Think this object is empty
+    /// @return 
     MapConstPtr_Type getMapRepeatedP2() const;
-
+    
+    /// @brief Getter for element map 
+    /// @return 
     MapConstPtr_Type getElementMap() const;
-
+	
+    /// @brief Getter for edge map
+    /// @return 
     MapConstPtr_Type getEdgeMap() const; // Edge Map
-
+    
+    /// @brief getter for list of repeated points with x,y,z coordinates in each row
+    /// @return pointsRep_
     vec2D_dbl_ptr_Type getPointsRepeated() const;
 
+    /// @brief getter for list of unique points with x,y,z coordinates in each row
+    /// @return pointsUni_
     vec2D_dbl_ptr_Type getPointsUnique() const;
-
+    
+    /// @brief Getter for flags corresponting to repeated points
+    /// @return bcFlagRep_
     vec_int_ptr_Type getBCFlagRepeated() const;
-
+    
+    /// @brief Getter for flags corresponting to unique points
+    /// @return bcFlagUni_
     vec_int_ptr_Type getBCFlagUnique() const;
 
     virtual void dummy() = 0;
-
+    
+    /// @brief Returns element list as c-object
+    /// @return elementsC_
     ElementsPtr_Type getElementsC() const;
 
+    /// @brief Getter for surface elements. Probably set in mesh partitioner. They are generally the dim-1 surface elements
+    /// @return surfaceElements_
     ElementsPtr_Type getSurfaceElements();
-
+    
+    /// @brief 
+    /// @return dim_ 
     int getDimension();
-
+    
+    /// @brief Global number of elements
+    /// @return numElementsGlob_
     GO getNumElementsGlobal();
-
+    
+    /// @brief Local number of elements
+    /// @return 
     LO getNumElements();
-
-    LO getNumPoints(std::string type = "Unique");
-
+    
+    /// @brief Get local (LO) number of points either in unique or repeated version
+    /// @param type LO (local ordinal)
+    /// @return numer of points
+    LO getNumPoints(std::string type="Unique");
+    
+    /// @brief 
+    /// @return 
     int getOrderElement();
 
-    CommConstPtrConst_Type getComm() const { return comm_; };
-
-    int setStructuredMeshFlags(int flags) { return 0; };
-
-    void setElementFlags(std::string type = "");
-
+    /// @brief Communicator object
+    /// @return 
+    CommConstPtrConst_Type getComm(){return comm_;};
+    
+    /// @brief This is done in meshStructured. Maybe we should move it here or delete this.
+    /// @param flags 
+    /// @return 
+    int setStructuredMeshFlags(int flags){return 0;};
+    
+    /// @brief Something for TPM. Can be deprecated soon.
+    /// @param type 
+    void setElementFlags(std::string type="");
+    
+    /// @brief Setting current coordinates as reference configuration. Should only be called once :D
     void setReferenceConfiguration();
-
-    void moveMesh(MultiVectorPtr_Type displacementUnique, MultiVectorPtr_Type displacementRepeated);
-
-    // Creates an AABBTree from own vertice and elementlist.
+    
+    /// @brief Moving mesh according to displacement based on reference configuration.
+    /// @param displacementUnique displacement in unqiue dist.
+    /// @param displacementRepeated displacement in repeated dist.
+    void moveMesh( MultiVectorPtr_Type displacementUnique, MultiVectorPtr_Type displacementRepeated );
+    
+    // Creates an AABBTree from own vertice- and elementlist.
     void create_AABBTree();
 
     vec_int_ptr_Type findElemsForPoints(vec2D_dbl_ptr_Type query_points);
@@ -130,12 +180,17 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
 
     bool isPointInElem(vec_dbl_Type point, int element);
 
+    /// @brief 
+    /// @return 
     tuple_intint_Type getRankRange() const {return rankRange_;};
     
+    /// @brief Deleting surface elements, called after reading input mesh. 
     void deleteSurfaceElements(){ surfaceElements_.reset(); };
 
+    /// @brief Correcting the normal direction of all surface normals set as subelements of volume elements to be outward normals
     void correctNormalDirections();
 
+    /// @brief Correct the element orientation of all elements to have positive volume / det when doint transformation
     void correctElementOrientation();    
 
     /*!
@@ -148,6 +203,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     MapConstPtr_Type getMapOverlapping() const;
     ElementsPtr_Type getElementsOverlappingGhosts() const;
     vec_int_ptr_Type getBCFlagOverlappingGhosts() const;
+    GraphPtr_Type getDualGraph() const;
 
     // Have to make these const and the maps mutable to fit to the const structure of problem <- domain <- mesh
     void setElementsC(ElementsPtr_Type newElements) const;
@@ -155,7 +211,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
                                 const vec_int_ptr_Type newBCs) const;
     void replaceUniqueMembers(const MapPtr_Type newMap, const vec2D_dbl_ptr_Type newPoints,
                               const vec_int_ptr_Type newBCs) const;
-    /* ###################################################################### */
+	    /* ###################################################################### */
 
     int dim_;
     long long numElementsGlob_;
@@ -218,7 +274,8 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     /* ###################################################################### */
 private:
 
-    void flipSurface(FiniteElement_Type feSub);
+    void flipSurface(ElementsPtr_Type subEl, int surfaceNumber);
+    void flipElement(ElementsPtr_Type elements, int elementNumber);
 };
 } // namespace FEDD
 

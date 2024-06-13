@@ -1132,8 +1132,8 @@ void FE<SC,LO,GO,NO>::assemblyNavierStokes(int dim,
 	problemDisk->push_back(pres);
 
 	if(assemblyFEElements_.size()== 0){
-        if(params->sublist("Parameter").get("Newtonian",true) == false)
-	 	    initAssembleFEElements("NavierStokesNonNewtonian",problemDisk,elements, params,pointsRep,domainVec_.at(FElocVel)->getElementMap()); // In cas of non Newtonian Fluid
+        if(params->sublist("Material").get("Newtonian",true) == false)
+	 	    initAssembleFEElements("GeneralizedNewtonian",problemDisk,elements, params,pointsRep,domainVec_.at(FElocVel)->getElementMap()); // In cas of non Newtonian Fluid
         else
         	initAssembleFEElements("NavierStokes",problemDisk,elements, params,pointsRep,domainVec_.at(FElocVel)->getElementMap());
     }
@@ -1176,12 +1176,22 @@ void FE<SC,LO,GO,NO>::assemblyNavierStokes(int dim,
 				addFeBlockMatrix(A, elementMatrix, elements->getElement(T), elementsPres->getElement(T), mapVel, mapPres, problemDisk);
 		}
    		if(assembleMode == "FixedPoint"){
-
-            AssembleFENavierStokesPtr_Type elTmp = Teuchos::rcp_dynamic_cast<AssembleFENavierStokes_Type>(assemblyFEElements_[T] );
             
-            elTmp->assembleFixedPoint();
-		    
-            elementMatrix = elTmp->getFixedPointMatrix(); 
+            //AssembleFENavierStokesPtr_Type elTmp = Teuchos::rcp_dynamic_cast<AssembleFENavierStokes_Type>(assemblyFEElements_[T] ); // Why should we need a pointer we can directly call it using assemblyFEElements_[T]? Because assemblyFixedPoint is not a function of base class
+
+            if(params->sublist("Material").get("Newtonian",true) == false)
+            {
+                AssembleFEGeneralizedNewtonianPtr_Type elTmp = Teuchos::rcp_dynamic_cast<AssembleFEGeneralizedNewtonian_Type>( assemblyFEElements_[T] );
+                elTmp->assembleFixedPoint();
+                elementMatrix =  elTmp->getFixedPointMatrix(); 
+            }
+            else // Newtonian Case
+            {
+              AssembleFENavierStokesPtr_Type elTmp = Teuchos::rcp_dynamic_cast<AssembleFENavierStokes_Type>( assemblyFEElements_[T] );
+              elTmp->assembleFixedPoint();
+              elementMatrix =  elTmp->getFixedPointMatrix(); 
+            }
+            
 
 			assemblyFEElements_[T]->advanceNewtonStep(); // n genereal non linear solver step
 
@@ -1227,6 +1237,71 @@ void FE<SC,LO,GO,NO>::assemblyNavierStokes(int dim,
 
 
 }
+
+
+/*!
+ \brief Postprocessing: Using a converged velocity solution -> compute averaged viscosity inside an element at center of mass
+@param[in] dim Dimension
+@param[in] FEType FE Discretization
+@param[in] degree Degree of basis function
+@param[in] repeated solution fields for u and p
+@param[in] parameter lists
+*/
+
+
+template <class SC, class LO, class GO, class NO>
+void FE<SC,LO,GO,NO>::computeSteadyViscosityFE_CM(int dim,
+	                                    string FETypeVelocity,
+	                                    string FETypePressure,
+										int dofsVelocity,
+										int dofsPressure,
+										MultiVectorPtr_Type u_rep,
+										MultiVectorPtr_Type p_rep,
+ 										ParameterListPtr_Type params){
+	
+
+    UN FElocVel = checkFE(dim,FETypeVelocity); // Checks for different domains which belongs to a certain fetype
+    UN FElocPres = checkFE(dim,FETypePressure); // Checks for different domains which belongs to a certain fetype
+
+	ElementsPtr_Type elements = domainVec_.at(FElocVel)->getElementsC();
+	ElementsPtr_Type elementsPres = domainVec_.at(FElocPres)->getElementsC();
+
+	vec_dbl_Type solution(0);
+	vec_dbl_Type solution_u;
+	vec_dbl_Type solution_p;
+    vec_dbl_Type solution_viscosity;
+
+    // We have to compute viscosity solution in each element 
+	MultiVectorPtr_Type Sol_viscosity = Teuchos::rcp( new MultiVector_Type( domainVec_.at(FElocVel)->getElementMap(), 1 ) ); //
+    BlockMultiVectorPtr_Type visco_output = Teuchos::rcp( new BlockMultiVector_Type(1) );
+    visco_output->addBlock(Sol_viscosity,0);
+   
+
+	for (UN T=0; T<assemblyFEElements_.size(); T++) {
+       
+		vec_dbl_Type solution(0);
+		solution_u = getSolution(elements->getElement(T).getVectorNodeList(), u_rep,dofsVelocity); // get the solution inside an element on the nodes
+		solution_p = getSolution(elementsPres->getElement(T).getVectorNodeList(), p_rep,dofsPressure);
+
+		solution.insert( solution.end(), solution_u.begin(), solution_u.end() ); // here we insert the solution
+		solution.insert( solution.end(), solution_p.begin(), solution_p.end() );
+
+		assemblyFEElements_[T]->updateSolution(solution); // here we update the value of the solutions inside an element
+ 
+        assemblyFEElements_[T]->computeLocalconstOutputField(); //  we compute the viscosity inside an element
+        solution_viscosity = assemblyFEElements_[T]->getLocalconstOutputField();
+
+        Teuchos::ArrayRCP<SC>  resArray_block = visco_output->getBlockNonConst(0)->getDataNonConst(0); // First 
+        resArray_block[T] = solution_viscosity[0]; // although it is a vector it only has one entry because we compute the value in the center of the element
+          
+	} // end loop over all elements
+    // We could also instead of just overwrite it add an aditional block such that we could also compute other output fields and save it in there
+    this->const_output_fields= visco_output;
+
+
+}
+
+
 
 /*!
 
@@ -7253,6 +7328,73 @@ void FE<SC,LO,GO,NO>::assemblyRHS( int dim,
         }
     }
 }
+
+/// @brief Assembling \int p \dx = 0. Thus, we need the integral part for the mean pressure value. We need this to be in matrix format, as it is added to the system
+/// @param dim Dimension
+/// @param FEType FEType
+/// @param a Matrix Ptr with resulting assembly
+template <class SC, class LO, class GO, class NO>
+void FE<SC,LO,GO,NO>::assemblyPressureMeanValue( int dim,
+                                   std::string FEType,
+                                   MatrixPtr_Type  a,
+                                   MatrixPtr_Type  aT) 
+                                   {
+
+    TEUCHOS_TEST_FOR_EXCEPTION(FEType == "P0",std::logic_error, "Not implemented for P0");
+
+    TEUCHOS_TEST_FOR_EXCEPTION( a.is_null(), std::runtime_error, "Matrix is null." );
+
+    UN FEloc;
+    FEloc = checkFE(dim,FEType);
+
+    ElementsPtr_Type elements = domainVec_.at(FEloc)->getElementsC();
+
+    vec2D_dbl_ptr_Type pointsRep = domainVec_.at(FEloc)->getPointsRepeated();
+
+    MapConstPtr_Type map = domainVec_.at(FEloc)->getMapRepeated();
+    vec2D_dbl_ptr_Type phi;
+    vec_dbl_ptr_Type weights = Teuchos::rcp(new vec_dbl_Type(0));
+    // last parameter should alwayss be the degree
+    UN deg = 2; 
+
+    vec2D_dbl_ptr_Type quadPoints;
+    Helper::getQuadratureValues(dim, deg, quadPoints, weights, FEType); // quad points for rhs values
+
+    Helper::getPhi(phi, weights, dim, FEType, deg);
+
+    SC detB;
+    SC absDetB;
+    SmallMatrix<SC> B(dim);
+    GO glob_i, glob_j;
+    vec_dbl_Type v_i(dim);
+    vec_dbl_Type v_j(dim);
+  
+
+    for (UN T=0; T<elements->numberElements(); T++) {
+
+        Helper::buildTransformation(elements->getElement(T).getVectorNodeList(), pointsRep, B, FEType);
+        detB = B.computeDet( );
+        absDetB = std::fabs(detB);
+		
+        for (UN i=0; i < phi->at(0).size(); i++) {
+            Teuchos::Array<SC> value( 1, 0. );
+            for (UN w=0; w<weights->size(); w++){
+                value[0] += weights->at(w) * phi->at(w).at(i)*1.0;
+            }
+            value[0] *= absDetB;
+            LO row = (LO) elements->getElement(T).getNode(i);
+            Teuchos::Array<GO> columnIndices( 1, 0 ); // We only have on column
+
+            a->insertGlobalValues( row, columnIndices(), value() ); // Automatically adds entries if a value already exists 
+            columnIndices[0] = row;
+            aT->insertGlobalValues( 0, columnIndices(), value() ); // Automatically adds entries if a value already exists 
+        }
+    }
+    a->fillComplete();
+    //a->print();
+    
+}
+
 
 template <class SC, class LO, class GO, class NO>
 void FE<SC,LO,GO,NO>::assemblyRHSDegTest( int dim,
