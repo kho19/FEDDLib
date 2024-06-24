@@ -289,16 +289,15 @@ int main(int argc, char *argv[]) {
                         bcFactory->addBC(zeroDirichlet2D, 2, 0, domain, "Dirichlet", dim);
                     /* else if (dim == 3) */
                     /*     bcFactory->addBC(zeroDirichlet3D, 2, 0, domain, "Dirichlet", dim); */
-                }
-                else if (meshType == "unstructured") {
-                    if (dim == 2)
-                        bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim);
-                    else if (dim == 3)
+                } else if (meshType == "unstructured") {
+                    if (dim == 2) {
+                        bcFactory->addBC(zeroDirichlet2D, 2, 0, domain, "Dirichlet", dim);
+                        bcFactory->addBC(zeroDirichlet2D, 4, 0, domain, "Dirichlet", dim);
+                    } else if (dim == 3) {
                         bcFactory->addBC(zeroDirichlet3D, 1, 0, domain, "Dirichlet", dim);
+                    }
                 }
-                
-                
-                
+
                 NonLinElasticity<SC,LO,GO,NO> elasticity( domain, FEType, parameterListAll );
                 
                 domain->info();

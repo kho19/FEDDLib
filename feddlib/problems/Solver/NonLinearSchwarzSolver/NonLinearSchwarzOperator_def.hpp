@@ -61,7 +61,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr seria
       systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       rhsTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      sourceTermTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, rhsFuncVecTmp_{0},
+      sourceTermTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       previousSolutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       residualVecTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       feFactoryTmp_{Teuchos::rcp(new FEDD::FE<SC, LO, GO, NO>())},
@@ -181,10 +181,10 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     solutionTmp_ = problem_->getSolution();
     rhsTmp_ = problem_->rhs_;
     sourceTermTmp_ = problem_->sourceTerm_;
-    rhsFuncVecTmp_ = problem_->rhsFuncVec_;
     feFactoryTmp_ = problem_->feFactory_;
     previousSolutionTmp_ = problem_->previousSolution_;
     residualVecTmp_ = problem_->residualVec_;
+    // Do not need to store rhsFuncVec_ because reseting problem does not erase it
 
     // ================= Replace shared objects ===============================
     // Done to "trick" FEDD::Problem assembly routines to assemble locally on the overlapping subdomain
@@ -214,8 +214,6 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
 
     // Problems block vectors and matrices need to be reinitialized
     problem_->initializeProblem();
-    // the rhsFuncVec_ does not care about being local or global
-    problem_->rhsFuncVec_ = rhsFuncVecTmp_;
 
     if (problem_->getDofsPerNode(0) > 1) {
         x_->getBlockNonConst(0)->replaceMap(FEDDMapVecFieldOverlappingGhostsLocal);
@@ -261,14 +259,14 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     double absResidual = 1.;
     int nlIts = 0;
 
-   // Need to initialize the rhs_ and set boundary values in rhs_
+    // Need to initialize the rhs_ and set boundary values in rhs_
     problem_->assemble();
     problem_->setBoundaries();
 
     // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
     // this = alpha*xTmp + beta*this
     problem_->solution_->update(ST::one(), *x_, ST::one());
- 
+
     // Need to update solution_ within each iteration to assemble at u+P_i*g_i but update only g_i
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
     // It would be more efficient to only store u on the boundary and update this value in each iteration
@@ -307,7 +305,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
 
     // Set solution_ to g_i
     problem_->solution_->update(-ST::one(), *x_, ST::one());
-    FEDD::logGreen("==> Terminated inner Newton", this->MpiComm_);
+    FEDD::logGreen("Terminated inner Newton", this->MpiComm_);
     totalIters_ += nlIts;
 
     if (problem_->getParameterList()->sublist("Parameter").get("Cancel MaxNonLinIts", false)) {
@@ -363,7 +361,6 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     this->replaceMapAndExportProblem();
     this->MpiComm_->barrier();
     // Restore system state
-    // TODO: kho maybe these reinits are not needed?
     problem_->initializeProblem();
     problem_->system_ = systemTmp_;
     problem_->solution_ = solutionTmp_;
@@ -450,7 +447,7 @@ template <class SC, class LO, class GO, class NO> string NonLinearSchwarzOperato
 template <class SC, class LO, class GO, class NO>
 void NonLinearSchwarzOperator<SC, LO, GO, NO>::replaceMapAndExportProblem() {
 
-    // TODO: KHo make this work for block and vector-valued systems
+    // TODO: kho make this work for block and vector-valued systems
     auto domainPtr_vec = problem_->getDomainVector();
     MapConstPtrFEDD mapUnique;
     MapConstPtrFEDD mapOverlappingGhosts;

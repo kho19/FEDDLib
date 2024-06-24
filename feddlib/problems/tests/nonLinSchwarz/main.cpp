@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
     string meshType = parameterListProblem->sublist("Parameter").get("Mesh Type", "structured");
     string FEType = parameterListProblem->sublist("Parameter").get("Discretization", "P1");
     auto overlap = parameterListSolver->get("Overlap", 1);
-    int numProcsCoarseSolve = 0; // TODO: kho need to implement this
+    int numProcsCoarseSolve = 0;
     int size = comm->getSize() - numProcsCoarseSolve;
 
     // ########################

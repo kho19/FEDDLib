@@ -774,10 +774,12 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     print("================= Nonlinear Schwarz terminated =========================", mpiComm);
     print("\n\nOuter Newton:", mpiComm, 25);
     print("Rel. residual:", mpiComm, 15);
+    print("Abs. residual:", mpiComm, 15);
     print("Iters:", mpiComm, 15);
     print("GMRES iters:", mpiComm, 15);
     print("\n", mpiComm, 25);
     print(relativeResidual, mpiComm, 15, 2);
+    print(residual, mpiComm, 15, 2);
     print(outerNonLinIts, mpiComm, 15, 2);
     print(gmresIts, mpiComm, 15, 2);
     print("\n\nInner Newton:", mpiComm, 25);

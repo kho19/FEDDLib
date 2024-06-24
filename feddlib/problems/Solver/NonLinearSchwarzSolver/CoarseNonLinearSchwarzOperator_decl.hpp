@@ -116,8 +116,6 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
                SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const override;
 
-    BlockMatrixPtrFEDD getCoarseJacobian() const;
-
     void exportCoarseBasis();
 
     std::vector<SC> getRunStats() const;
@@ -133,8 +131,6 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     BlockMultiVectorPtrFEDD x_;
     // Current output. Null if no valid output stored.
     BlockMultiVectorPtrFEDD y_;
-    // Tangent of the nonlinear problem R_iDF(u_i)P_i as used in ASPEN
-    BlockMatrixPtrFEDD coarseJacobian_;
 
     // Newtons method params
     double relNewtonTol_;
@@ -143,6 +139,11 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     // Temp. problem state params
     BlockMultiVectorPtrFEDD solutionTmp_;
     BlockMatrixPtrFEDD systemTmp_;
+    BlockMultiVectorPtrFEDD rhsTmp_;
+    BlockMultiVectorPtrFEDD sourceTermTmp_;
+    BlockMultiVectorPtrFEDD previousSolutionTmp_;
+    BlockMultiVectorPtrFEDD residualVecTmp_;
+ 
     // Store total iteration count of inner Newton methods over all calls to apply()
     int totalIters_;
 };

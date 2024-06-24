@@ -102,10 +102,6 @@ int main(int argc, char *argv[]) {
     myCLP.setOption("length", &length, "length of domain.");
     string xmlProblemFile = "parametersProblem.xml";
     myCLP.setOption("problemfile", &xmlProblemFile, ".xml file with Inputparameters.");
-    string xmlPrecFile = "parametersPrec.xml";
-    myCLP.setOption("precfile", &xmlPrecFile, ".xml file with Inputparameters.");
-    string xmlSolverFile = "parametersSolver.xml";
-    myCLP.setOption("solverfile", &xmlSolverFile, ".xml file with Inputparameters.");
     string xmlSchwarzSolverFile = "parametersSolverNonLinSchwarz.xml";
     myCLP.setOption("schwarzsolverfile", &xmlSchwarzSolverFile, ".xml file with Inputparameters.");
 
@@ -118,8 +114,6 @@ int main(int argc, char *argv[]) {
     }
 
     ParameterListPtr_Type parameterListProblem = Teuchos::getParametersFromXmlFile(xmlProblemFile);
-    ParameterListPtr_Type parameterListPrec = Teuchos::getParametersFromXmlFile(xmlPrecFile);
-    ParameterListPtr_Type parameterListSolver = Teuchos::getParametersFromXmlFile(xmlSolverFile);
     ParameterListPtr_Type parameterListSchwarzSolver = Teuchos::getParametersFromXmlFile(xmlSchwarzSolverFile);
 
     int dim = parameterListProblem->sublist("Parameter").get("Dimension", 3);
@@ -132,8 +126,6 @@ int main(int argc, char *argv[]) {
     int n;
 
     ParameterListPtr_Type parameterListAll(new Teuchos::ParameterList(*parameterListProblem));
-    parameterListAll->setParameters(*parameterListPrec);
-    parameterListAll->setParameters(*parameterListSolver);
     parameterListAll->setParameters(*parameterListSchwarzSolver);
     int minNumberSubdomains = (int)length;
 
@@ -200,22 +192,31 @@ int main(int argc, char *argv[]) {
 
     Teuchos::RCP<BCBuilder<SC, LO, GO, NO>> bcFactory(new BCBuilder<SC, LO, GO, NO>());
     if (meshType == "structured") {
-        if (dim == 2)
+        if (dim == 2) {
+            /* bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim); */
             bcFactory->addBC(zeroDirichlet2D, 2, 0, domain, "Dirichlet", dim);
-        else if (dim == 3)
+            /* bcFactory->addBC(zeroDirichlet2D, 3, 0, domain, "Dirichlet", dim); */
+            bcFactory->addBC(zeroDirichlet2D, 4, 0, domain, "Dirichlet", dim);
+        } else if (dim == 3) {
             bcFactory->addBC(zeroDirichlet3D, 2, 0, domain, "Dirichlet", dim);
+        }
     } else if (meshType == "unstructured") {
-        if (dim == 2)
+        if (dim == 2) {
             // For unstructured meshes and surface force set zeroBC at flag 1 since the surface force is applied at flag
             // 3. For volume forces any boundary flag can be taken. This will affect which side of the geometry is
             // stationary
-            bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim);
-        else if (dim == 3)
+            /* bcFactory->addBC(zeroDirichlet2D, 1, 0, domain, "Dirichlet", dim); */
+            bcFactory->addBC(zeroDirichlet2D, 2, 0, domain, "Dirichlet", dim);
+            /* bcFactory->addBC(zeroDirichlet2D, 3, 0, domain, "Dirichlet", dim); */
+            bcFactory->addBC(zeroDirichlet2D, 4, 0, domain, "Dirichlet", dim);
+
+        } else if (dim == 3) {
             bcFactory->addBC(zeroDirichlet3D, 1, 0, domain, "Dirichlet", dim);
+        }
     }
     // The current global solution must be set as the Dirichlet BC on the ghost nodes for nonlinear Schwarz solver to
     // correctly solve on the subdomains
-    std::vector<double> funcParams {static_cast<double>(dim)};
+    std::vector<double> funcParams{static_cast<double>(dim)};
     bcFactory->addBC(Helper::currentSolutionDirichlet, -99, 0, domain, "Dirichlet", dim, funcParams);
 
     NonLinElasticity<SC, LO, GO, NO> elasticity(domain, FEType, parameterListAll);
@@ -232,7 +233,8 @@ int main(int argc, char *argv[]) {
         // corresponding to the specified boundary
         /* elasticity.addRhsFunction(rhsY); */
         // Use this in conjuction with Source Type = Volume. It applies a constant force at every node
-        // Applying an elongating force results in a stable solution for much larger deformations than a compressing force
+        // Applying an elongating force results in a stable solution for much larger deformations than a compressing
+        // force
         elasticity.addRhsFunction(rhs2D);
     else if (dim == 3)
         elasticity.addRhsFunction(rhsX);

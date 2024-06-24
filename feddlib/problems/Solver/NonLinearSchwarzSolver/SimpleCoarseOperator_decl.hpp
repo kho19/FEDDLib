@@ -21,8 +21,10 @@
 /*!
  Declaration of simple coarse operator
  This class is just a wrapper around an existing NonlinearCoarseOperator providing it with an alternative apply() method
- that evaluates the tanget. This design choice facilitates reusing the underlying CoarseOperator for evaluation of the
- coarse problem and its tangent.
+ that evaluates the tanget. The alternative apply() method is provided by the underlying CoarseOperator object. The
+ initialize() method uses the default assignment operator of CoarseOperator to copy the member variables (which are
+ mostly pointers) of the passed CoarseOperator object. By passing a NonlinearCoarseOperator object, its coarse Jacobian
+ and coarse space can be used in the apply() method of CoarseOperator through the SimpleCoarseOperator object.
 
  @brief Implements the coarse tangent $D\mathcal{F}(u) = P_0(R_0DF(u_0)P_0)^{-1}R_0DF(u_0)$ from the nonlinear
  Schwarz approach
@@ -105,7 +107,7 @@ class SimpleCoarseOperator : public CoarseOperator<SC, LO, GO, NO> {
     ~SimpleCoarseOperator() = default;
 
     int initialize() override;
-    int initialize(Teuchos::RCP<CoarseOperator<SC, LO, GO, NO>> inputOp);
+    int initialize(const Teuchos::RCP<const CoarseOperator<SC, LO, GO, NO>> inputOp);
 
     int compute() override;
 

@@ -17,3 +17,11 @@ TRIBITS_COPY_FILES_TO_BINARY_DIR(data_nonlinelasticity
 	DEST_FILES parametersPrec.xml  parametersProblem.xml parametersSolver.xml 
 	EXEDEPS nonlinelasticity
 )
+
+TRIBITS_COPY_FILES_TO_BINARY_DIR(mesh_nonlinelasticity
+	SOURCE_DIR ${CMAKE_SOURCE_DIR}/meshes
+  SOURCE_FILES beam2D.mesh
+	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
+  DEST_FILES beam2D.mesh
+  EXEDEPS nonlinelasticity
+)

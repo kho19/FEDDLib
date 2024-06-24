@@ -166,7 +166,6 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     BlockMultiVectorPtrFEDD solutionTmp_;
     BlockMultiVectorPtrFEDD rhsTmp_;
     BlockMultiVectorPtrFEDD sourceTermTmp_;
-    std::vector<FEDD::RhsFunc_Type> rhsFuncVecTmp_;
     BlockMultiVectorPtrFEDD previousSolutionTmp_;
     BlockMultiVectorPtrFEDD residualVecTmp_;
     // FE assembly factory for global and local assembly

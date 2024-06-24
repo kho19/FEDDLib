@@ -1,9 +1,9 @@
 <ParameterList name="solver">
 
   <Parameter name="Nonlin Schwarz Variant" type="string" value="ASPEN" />
-  <Parameter name="Levels" type="int" value="1" />
-  <Parameter name="Overlap" type="int" value="2" />
-  <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
+  <Parameter name="Levels" type="int" value="2" />
+  <Parameter name="Overlap" type="int" value="3" />
+  <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
   <Parameter name="Zero Initial Guess" type="bool" value="false" />
 
   <ParameterList name="ThyraSolver"> <!-- Solver used by the FEDD::Problem object in the inner Newton -->
@@ -23,7 +23,7 @@
           <Parameter name="Solver Type" type="string" value="Block GMRES" />
           <ParameterList name="Solver Types">
             <ParameterList name="Block GMRES">
-              <Parameter name="Convergence Tolerance" type="double" value="1e-6" />
+              <Parameter name="Convergence Tolerance" type="double" value="1e-8" />
               <Parameter name="Maximum Iterations" type="int" value="100" />
               <Parameter name="Num Blocks" type="int" value="100" />
               <Parameter name="Block Size" type="int" value="1" />
@@ -41,15 +41,18 @@
   </ParameterList>
 
   <ParameterList name="Inner Newton Nonlinear Schwarz">
-    <Parameter name="Relative Tolerance" type="double" value="1.0e-5" />
-    <Parameter name="Max Iterations" type="int" value="10" />
-    <Parameter name="Criterion" type="string" value="Residual" />
+    <Parameter name="Relative Tolerance" type="double" value="1.0e-6" />
+    <Parameter name="Absolute Tolerance" type="double" value="1.0e-13" />
+    <Parameter name="Max Iterations" type="int" value="50" />
   </ParameterList>
 
   <ParameterList name="Coarse Nonlinear Schwarz"> <!-- Same list as passed to
     IPOUHarmonicCoarseOperator in FROSch -->
 
     <Parameter name="Store Phi" type="bool" value="true" />
+    <Parameter name="DofsPerNode1" type="int" value="2"/>
+
+    <!-- <Parameter name="Null Space Type" type="string" value="Laplace" /> -->
     <Parameter name="Null Space Type" type="string" value="Linear Elasticity" />
 
     <ParameterList name="Blocks"> <!-- Probably so that different types of coarse space can be

@@ -24,11 +24,13 @@ TRIBITS_COPY_FILES_TO_BINARY_DIR(mesh_nonLinElasWithNonLinSchwarz
 	SOURCE_FILES square_9.mesh
 	SOURCE_FILES square_900.mesh
   SOURCE_FILES square_2500.mesh
+  SOURCE_FILES beam2D.mesh
 	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
 	DEST_FILES square.mesh
 	DEST_FILES square_9.mesh
 	DEST_FILES square_900.mesh
   DEST_FILES square_2500.mesh
+  DEST_FILES beam2D.mesh
   EXEDEPS nonLinElasWithNonLinSchwarz
 )
 
