@@ -1,7 +1,6 @@
-#ifndef NONLINEARSUMOPERATOR_DECL_HPP
-#define NONLINEARSUMOPERATOR_DECL_HPP
+#ifndef NONLINEARCOMBINEOPERATOR_DECL_HPP
+#define NONLINEARCOMBINEOPERATOR_DECL_HPP
 #include "feddlib/core/General/DefaultTypeDefs.hpp"
-#include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearCombineOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearOperator_decl.hpp"
 #include <FROSch_SchwarzOperator_def.hpp>
 #include <Teuchos_ArrayRCPDecl.hpp>
@@ -13,25 +12,24 @@
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
 
-#include <FROSch_SumOperator_decl.hpp>
+#include "CombineOperator_decl.hpp"
 /*!
- Declaration of NonlinearSumOperator which extends the FROSch sum operator to allow non-const apply() methods. This is
+ Declaration of NonlinearCombineOperator which extends the FROSch Combine operator to allow non-const apply() methods. This is
  necessary since the apply() methods of nonlinear operators perform nonlinear solves which requires changing member
- variables.
+ variables. This class does not implement the apply() method itself. This is left up to e.g. sumOperator or h1Operator
 
- @brief Implements the coarse correction T_0 from the nonlinear Schwarz approach
  @author Kyrill Ho
  @version 1.0
  @copyright KH
  */
-// TODO: kho this class basically reimplements FROSch_SumOperator. If FROSch used virtual inheritance this operator
+// TODO: kho this class basically reimplements FROSch_CombineOperator. If FROSch used virtual inheritance this operator
 // could use most of the existing code since casting between NonlinearOperator and SchwarzOperator would be possible
 // (without using dynamic_cast)
 
 namespace FROSch {
 
 template <class SC = default_sc, class LO = default_lo, class GO = default_go, class NO = default_no>
-class NonLinearSumOperator : public NonLinearCombineOperator<SC, LO, GO, NO> {
+class NonLinearCombineOperator : public CombineOperator<SC, LO, GO, NO>, public NonLinearOperator<SC, LO, GO, NO> {
 
   protected:
     using SchwarzOperatorPtr = typename SchwarzOperator<SC, LO, GO, NO>::SchwarzOperatorPtr;
@@ -41,19 +39,31 @@ class NonLinearSumOperator : public NonLinearCombineOperator<SC, LO, GO, NO> {
     using NonLinearOperatorPtrVec = Array<NonLinearOperatorPtr>;
     using NonLinearOperatorPtrVecPtr = ArrayRCP<NonLinearOperatorPtr>;
 
-    using CommPtr = typename NonLinearCombineOperator<SC, LO, GO, NO>::CommPtr;
-    using BoolVec = typename NonLinearCombineOperator<SC, LO, GO, NO>::BoolVec;
-    using XMultiVector = typename NonLinearCombineOperator<SC, LO, GO, NO>::XMultiVector;
-    using UN = typename NonLinearCombineOperator<SC, LO, GO, NO>::UN;
+    using CommPtr = typename CombineOperator<SC, LO, GO, NO>::CommPtr;
+    using BoolVec = typename CombineOperator<SC, LO, GO, NO>::BoolVec;
+    using XMultiVector = typename CombineOperator<SC, LO, GO, NO>::XMultiVector;
+    using UN = typename CombineOperator<SC, LO, GO, NO>::UN;
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
-    NonLinearSumOperator(CommPtr comm);
+    NonLinearCombineOperator(CommPtr comm);
 
-    ~NonLinearSumOperator() = default;
+    ~NonLinearCombineOperator() = default;
 
     void apply(const XMultiVector &x, XMultiVector &y, SC alpha = ScalarTraits<SC>::one(),
-               SC beta = ScalarTraits<SC>::zero()) override;
+               SC beta = ScalarTraits<SC>::zero()) override = 0;
+
+    void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly,
+               Teuchos::ETransp mode = Teuchos::NO_TRANS, SC alpha = ST::one(), SC beta = ST::zero()) const override;
+
+    int addOperator(NonLinearOperatorPtr op);
+
+    int addOperators(NonLinearOperatorPtrVecPtr operators);
+
+  protected:
+    NonLinearOperatorPtrVec NonLinearOperatorVector_ = NonLinearOperatorPtrVec(0);
+
+    BoolVec EnableNonLinearOperators_ = BoolVec(0);
 };
 } // namespace FROSch
 

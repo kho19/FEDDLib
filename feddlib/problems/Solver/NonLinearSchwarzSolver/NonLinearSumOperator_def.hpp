@@ -3,7 +3,7 @@
 
 #include "NonLinearSumOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearOperator_decl.hpp"
-#include <FROSch_SumOperator_decl.hpp>
+#include "NonLinearCombineOperator_decl.hpp"
 #include <Teuchos_BLAS_types.hpp>
 #include <Teuchos_RCPDecl.hpp>
 /*!
@@ -16,7 +16,7 @@
 namespace FROSch {
 
 template <class SC, class LO, class GO, class NO>
-NonLinearSumOperator<SC, LO, GO, NO>::NonLinearSumOperator(CommPtr comm) : SumOperator<SC, LO, GO, NO>(comm) {}
+NonLinearSumOperator<SC, LO, GO, NO>::NonLinearSumOperator(CommPtr comm) : NonLinearCombineOperator<SC, LO, GO, NO>(comm) {}
 
 // Y = alpha * A^mode * X + beta * Y
 template <class SC, class LO, class GO, class NO>
@@ -42,30 +42,6 @@ void NonLinearSumOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVe
     } else {
         y.update(alpha, x, beta);
     }
-}
-
-template <class SC, class LO, class GO, class NO>
-void NonLinearSumOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly,
-                                                 Teuchos::ETransp mode, SC alpha, SC beta) const {
-    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error,
-                               "This apply() overload should not be used with nonlinear operators");
-}
-
-template <class SC, class LO, class GO, class NO>
-int NonLinearSumOperator<SC, LO, GO, NO>::addOperator(NonLinearOperatorPtr op) {
-    NonLinearOperatorVector_.push_back(op);
-    EnableNonLinearOperators_.push_back(true);
-    return 0;
-}
-
-template <class SC, class LO, class GO, class NO>
-int NonLinearSumOperator<SC, LO, GO, NO>::addOperators(NonLinearOperatorPtrVecPtr operators) {
-    int ret = 0;
-    for (UN i = 1; i < operators.size(); i++) {
-        if (0 > addOperator(operators[i]))
-            ret -= pow(10, i);
-    }
-    return ret;
 }
 
 }; // namespace FROSch

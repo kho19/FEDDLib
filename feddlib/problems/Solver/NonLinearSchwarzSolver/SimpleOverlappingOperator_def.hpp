@@ -180,6 +180,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     y.update(alpha, *y_unique_, beta);
 }
 
+// The standard way to apply this operator is with the local Jacobians --> usePreonditionerOnly is not required for this.
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y,
                                                       bool usePreconditionerOnly, ETransp mode, SC alpha,

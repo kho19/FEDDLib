@@ -26,6 +26,10 @@
  mostly pointers) of the passed CoarseOperator object. By passing a NonlinearCoarseOperator object, its coarse Jacobian
  and coarse space can be used in the apply() method of CoarseOperator through the SimpleCoarseOperator object.
 
+ CoarseOperator only implements an apply() method with the option usePreconditionerOnly. When calling this operator in a
+ Thyra solver an apply() method without this option is required. This is provided via inheritance by the base class
+ SchwarzOperator.
+
  @brief Implements the coarse tangent $D\mathcal{F}(u) = P_0(R_0DF(u_0)P_0)^{-1}R_0DF(u_0)$ from the nonlinear
  Schwarz approach
  @author Kyrill Ho

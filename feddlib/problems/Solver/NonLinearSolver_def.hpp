@@ -3,7 +3,10 @@
 #include "NonLinearSolver_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/CoarseNonLinearSchwarzOperator_decl.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzSolver/H1Operator_decl.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearH1Operator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSchwarzOperator_decl.hpp"
+#include "feddlib/problems/Solver/NonLinearSchwarzSolver/SumOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSumOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleCoarseOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator_decl.hpp"
@@ -601,15 +604,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto mpiComm = domainVec.at(0)->getComm();
     auto serialComm = Teuchos::createSerialComm<LO>();
 
-    auto variantString = problem.getParameterList()->get("Nonlin Schwarz Variant", "ASPEN");
-    NonlinSchwarzVariant variant;
-    if (variantString == "ASPEN") {
-        variant = NonlinSchwarzVariant::ASPEN;
-    } else if (variantString == "ASPIN") {
-        variant = NonlinSchwarzVariant::ASPIN;
-    } else {
-        TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "Invalid nonlinear Schwarz solver type");
-    }
+    auto useASPEN = problem.getParameterList()->get("Use ASPEN", true);
 
     MapConstPtr_Type mapOverlapping;
     MapConstPtr_Type mapOverlappingGhosts;
@@ -635,9 +630,21 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
     // When using auto, this is an rcp to a const NonLinearSumOperator. We need non-const here to ensure that the
     // non-const (nonlinear) apply() overload is called
-    Teuchos::RCP<FROSch::NonLinearSumOperator<SC, LO, GO, NO>> rhsSumOperator =
-        Teuchos::rcp(new FROSch::NonLinearSumOperator<SC, LO, GO, NO>(mpiComm));
-    rhsSumOperator->addOperator(
+  // TODO: kho finish implementing this for diffferent variants. Use an enum here? 
+    Teuchos::RCP<FROSch::NonLinearCombineOperator<SC, LO, GO, NO>> rhsCombineOperator;
+    Teuchos::RCP<FROSch::CombineOperator<SC, LO, GO, NO>> simpleCombineOperator;
+    auto variantString = problem.getParameterList()->get("Nonlin Schwarz Variant", "Additive");
+    if (variantString == "Additive") {
+        rhsCombineOperator = Teuchos::rcp(new FROSch::NonLinearSumOperator<SC, LO, GO, NO>(mpiComm));
+        simpleCombineOperator = Teuchos::rcp(new FROSch::NewSumOperator<SC, LO, GO, NO>(mpiComm));
+    } else if (variantString == "H1") {
+        rhsCombineOperator = Teuchos::rcp(new FROSch::NonLinearH1Operator<SC, LO, GO, NO>(mpiComm));
+        simpleCombineOperator = Teuchos::rcp(new FROSch::H1Operator<SC, LO, GO, NO>(mpiComm));
+    } else {
+        TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, "Invalid nonlinear Schwarz variant");
+    }
+
+    rhsCombineOperator->addOperator(
         Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(nonLinearSchwarzOp));
 
     int numLevels = problem.getParameterList()->get("Levels", 1);
@@ -649,20 +656,19 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         coarseOperator->compute();
         // For plotting the coarse basis functions
         /* coarseOperator->exportCoarseBasis(); */
-        rhsSumOperator->addOperator(
+        rhsCombineOperator->addOperator(
             Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
     }
 
     auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
         Teuchos::rcpFromRef(problem), problem.getParameterList()));
-    auto simpleSumOperator = Teuchos::rcp(new FROSch::SumOperator<SC, LO, GO, NO>(mpiComm));
-    simpleSumOperator->addOperator(simpleOverlappingOperator);
+    simpleCombineOperator->addOperator(simpleOverlappingOperator);
 
     auto simpleCoarseOperator = Teuchos::rcp(new FROSch::SimpleCoarseOperator<SC, LO, GO, NO>(
         problem.system_->getBlock(0, 0)->getXpetraMatrix(), problem.getParameterList()));
     if (numLevels == 2) {
         simpleCoarseOperator->initialize(coarseOperator);
-        simpleSumOperator->addOperator(simpleCoarseOperator);
+        simpleCombineOperator->addOperator(simpleCoarseOperator);
     }
     // Init block vectors for nonlinear residual and outer Newton update
     auto gBlock = Teuchos::rcp(new MultiVector_Type(mapUnique, 1));
@@ -678,7 +684,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     Teuchos::RCP<Xpetra::Matrix<SC, LO, GO, NO>> jacobianGhosts;
     Teuchos::RCP<Xpetra::Import<LO, GO>> uniqueToOverlappingGhostsImporter;
     ParameterListPtr_Type params = Teuchos::parameterList();
-    if (variant == NonlinSchwarzVariant::ASPIN) {
+    if (!useASPEN) {
         jacobianGhosts = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
             mapOverlappingGhosts()->getXpetraMap(), domainVec.at(0)->getApproxEntriesPerRow());
         uniqueToOverlappingGhostsImporter =
@@ -710,16 +716,16 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         // Compute the residual of the alternative problem \mathcal{F} = g
         // g fulfills the boundary conditions
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
-        rhsSumOperator->apply(*problem.getSolution()->getBlock(0)->getXpetraMultiVector(),
+        rhsCombineOperator->apply(*problem.getSolution()->getBlock(0)->getXpetraMultiVector(),
                               *g->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
         if (numLevels == 2) {
             // Update SimpleCoarseOperator to ensure it wraps the current CoarseNonLinearSchwarzOperator
             simpleCoarseOperator->initialize(coarseOperator);
         }
-        if (variant == NonlinSchwarzVariant::ASPEN) {
+        if (useASPEN) {
             logGreen("Building ASPEN tangent", mpiComm);
             localJacobian = nonLinearSchwarzOp->getLocalJacobianGhosts()->getBlock(0, 0)->getXpetraMatrix();
-       } else if (variant == NonlinSchwarzVariant::ASPIN) {
+        } else {
 
             logGreen("Building ASPIN tangent with FROSch", mpiComm);
             problem.assemble("Newton");
@@ -735,14 +741,14 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
             jacobianGhosts->fillComplete(params);
             localJacobian =
                 FROSch::ExtractLocalSubdomainMatrix(jacobianGhosts.getConst(), mapOverlappingGhosts->getXpetraMap());
-       }
+        }
 
        simpleOverlappingOperator->initialize(serialComm, localJacobian, mapOverlapping->getXpetraMap(),
                                              mapOverlappingGhosts->getXpetraMap(), mapUnique->getXpetraMap(),
                                              domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
        simpleOverlappingOperator->compute();
        // Convert SchwarzOperator to Thyra::LinearOpBase
-       auto xpetraOverlappingOperator = Teuchos::rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleSumOperator);
+       auto xpetraOverlappingOperator = Teuchos::rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleCombineOperator);
 
        Teuchos::RCP<FROSch::TpetraPreconditioner<SC, LO, GO, NO>> tpetraFROSchOverlappingOperator(
            new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(xpetraOverlappingOperator));

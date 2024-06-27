@@ -1,6 +1,7 @@
 <ParameterList name="solver">
 
-  <Parameter name="Nonlin Schwarz Variant" type="string" value="ASPEN" />
+  <Parameter name="Nonlin Schwarz Variant" type="string" value="H1" />
+  <Parameter name="Use ASPEN" type="bool" value="true" />
   <Parameter name="Levels" type="int" value="2" />
   <Parameter name="Overlap" type="int" value="3" />
   <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
