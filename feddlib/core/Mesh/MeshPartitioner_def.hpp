@@ -1325,7 +1325,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildOverlappingDualGraphFromDistributedPa
     idx_t *adjncy;
 
     if (myRank == 0) {
-        cout << "--- Building dual graph with METIS ...";
+        cout << "--- Building dual graph with ParMETIS ...";
     }
     const auto returnCode = ParMETIS_V3_Mesh2Dual(elmdist, eptr, eind, &numflag, &ncommon, &xadj, &adjncy, &rawMpiComm);
 

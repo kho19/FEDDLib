@@ -265,7 +265,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
 
     // Set solution_ to be u+P_i*g_i. g_i is zero on the boundary, simulating P_i locally
     // this = alpha*xTmp + beta*this
-    problem_->solution_->update(ST::one(), *x_, ST::one());
+    problem_->solution_->update(ST::one(), *x_, -ST::one());
 
     // Need to update solution_ within each iteration to assemble at u+P_i*g_i but update only g_i
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
@@ -304,7 +304,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     }
 
     // Set solution_ to g_i
-    problem_->solution_->update(-ST::one(), *x_, ST::one());
+    problem_->solution_->update(ST::one(), *x_, -ST::one());
     FEDD::logGreen("Terminated inner Newton", this->MpiComm_);
     totalIters_ += nlIts;
 

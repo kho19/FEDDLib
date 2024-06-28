@@ -244,7 +244,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     // Set solution_ to be u+P_0*g_0. g_0 is zero on the boundary, simulating P_0 locally
     // x_ corresponds to u and problem_->solution_ corresponds to g_0
     // this = alpha*xTmp + beta*this
-    problem_->solution_->update(ST::one(), *x_, ST::one());
+    problem_->solution_->update(ST::one(), *x_, -ST::one());
 
     // Need to update solution_ within each iteration to assemble at u+P_0*g_0 but update only g_0
     // This is necessary since u is nonzero on the artificial (interface) zero Dirichlet boundary
@@ -301,7 +301,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     }
 
     // Set solution_ to g_i
-    problem_->solution_->update(-ST::one(), *x_, ST::one());
+    problem_->solution_->update(ST::one(), *x_, -ST::one());
     totalIters_ += nlIts;
     FEDD::logGreen("Terminated coarse Newton", this->MpiComm_);
 

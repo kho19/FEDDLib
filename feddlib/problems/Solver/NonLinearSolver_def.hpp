@@ -767,7 +767,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
  
        // Update the current solution
        // solution = alpha * deltaSolution + beta * solution
-       problem.solution_->update(ST::one(), deltaSolution, ST::one());
+       problem.solution_->update(-ST::one(), deltaSolution, ST::one());
        // Compute the residual
        problem.calculateNonLinResidualVec("reverse");
        residual = problem.calculateResidualNorm();

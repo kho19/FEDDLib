@@ -21,7 +21,6 @@ NonLinearH1Operator<SC, LO, GO, NO>::NonLinearH1Operator(CommPtr comm)
 template <class SC, class LO, class GO, class NO>
 void NonLinearH1Operator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, SC alpha, SC beta) {
     FROSCH_TIMER_START_LEVELID(applyTime, "H1Operator::apply");
-    std::cout << "OperatorVector_ size: " << this->OperatorVector_.size() << std::endl;
     FROSCH_ASSERT(this->NonLinearOperatorVector_.size() == 2, "H1 operator can only be applied with two levels")
 
     // We do not explicitly check if the operators have been activated here as is done e.g. in the SumOperator
@@ -43,7 +42,7 @@ void NonLinearH1Operator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVec
         ->apply(*this->XTmp_, *this->gTmp_, one, zero);
     // Set YTmp_ = u - g0
     this->YTmp_->update(one, *this->XTmp_, zero);
-    this->YTmp_->update(one, *this->gTmp_, one);
+    this->YTmp_->update(-one, *this->gTmp_, one);
     // Get overlapping correction g evaluated at u - g0
     // This will build the local Jacobians at v_i = u_0 - P_iT_i(u_0)
     rcp_dynamic_cast<NonLinearOperator<SC, LO, GO, NO>>(this->NonLinearOperatorVector_[0])
