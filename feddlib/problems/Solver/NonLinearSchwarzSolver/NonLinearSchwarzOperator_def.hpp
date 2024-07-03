@@ -54,7 +54,7 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr seria
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       localJacobianGhosts_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))}, mapOverlappingGhostsLocal_{},
       mapVecFieldOverlappingGhostsLocal_{}, relNewtonTol_{}, absNewtonTol_{}, maxNumIts_{},
-      combinationMode_{CombinationMode::Full},
+      combinationMode_{},
       multiplicity_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, mapRepeatedMpiTmp_{},
       mapUniqueMpiTmp_{}, mapVecFieldRepeatedMpiTmp_{}, mapVecFieldUniqueMpiTmp_{}, pointsRepTmp_{}, pointsUniTmp_{},
       bcFlagRepTmp_{}, bcFlagUniTmp_{}, elementsCTmp_{},
@@ -106,7 +106,7 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Absolute Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     totalIters_ = 0;
-    auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Full");
+    auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Restricted");
 
     if (combineModeTemp == "Averaging") {
         combinationMode_ = CombinationMode::Averaging;
@@ -116,9 +116,9 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
         combinationMode_ = CombinationMode::Restricted;
     } else {
         if (this->MpiComm_->getRank() == 0) {
-            std::cout << "\nInvalid Recombination Mode. Defaulting to Addition" << std::endl;
+            std::cerr << "\nInvalid Recombination Mode in NonLinearSchwarzOperator: \"" << combineModeTemp << "\". Defaulting to \"Restricted\"" << std::endl;
         }
-        combinationMode_ = CombinationMode::Full;
+        combinationMode_ = CombinationMode::Restricted;
     }
 
     mapOverlappingGhostsLocal_ = Xpetra::MapFactory<LO, GO, NO>::Build(

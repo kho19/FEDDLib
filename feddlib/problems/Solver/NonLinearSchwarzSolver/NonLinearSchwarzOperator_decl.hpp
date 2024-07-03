@@ -156,7 +156,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     // Vectors for saving repeated and unique points
     FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
     FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
-    // Vectors for saving the boundary conditios
+    // Vectors for saving the boundary conditions
     FEDD::vec_int_ptr_Type bcFlagRepTmp_;
     FEDD::vec_int_ptr_Type bcFlagUniTmp_;
     // Vector of elements for saving elementsC_

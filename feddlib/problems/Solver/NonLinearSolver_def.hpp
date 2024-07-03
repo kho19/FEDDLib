@@ -630,7 +630,6 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
     // When using auto, this is an rcp to a const NonLinearSumOperator. We need non-const here to ensure that the
     // non-const (nonlinear) apply() overload is called
-  // TODO: kho finish implementing this for diffferent variants. Use an enum here? 
     Teuchos::RCP<FROSch::NonLinearCombineOperator<SC, LO, GO, NO>> rhsCombineOperator;
     Teuchos::RCP<FROSch::CombineOperator<SC, LO, GO, NO>> simpleCombineOperator;
     auto variantString = problem.getParameterList()->get("Nonlin Schwarz Variant", "Additive");
@@ -700,6 +699,19 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     int outerNonLinIts = 0;
     int maxOuterNonLinIts = problem.getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
 
+    // Print solver settings
+    logGreen("Nonlinear Schwarz solver settings", mpiComm);
+    print("\tUse ASPEN: ", mpiComm);
+    if (mpiComm->getRank() == 0) {
+        std::cout << boolalpha << useASPEN;
+    }
+    print("\n\tSolver variant: " + variantString, mpiComm);
+    print("\n\tCombine mode: " + problem.getParameterList()->get("Combine Mode", "Restricted"), mpiComm);
+    print("\n\tOverlap: " + std::to_string(problem.getParameterList()->get("Overlap", 1)), mpiComm);
+    print("\n\tNum. levels: " + std::to_string(numLevels), mpiComm);
+    print("\n\tRel. tol: " + std::to_string(outerTol), mpiComm);
+    print("\n\tMax outer Newton iters.: " + std::to_string(maxOuterNonLinIts) + "\n", mpiComm);
+
     // Compute the residual
     problem.calculateNonLinResidualVec("reverse");
     auto residual0 = problem.calculateResidualNorm();
@@ -726,15 +738,11 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
             logGreen("Building ASPEN tangent", mpiComm);
             localJacobian = nonLinearSchwarzOp->getLocalJacobianGhosts()->getBlock(0, 0)->getXpetraMatrix();
         } else {
-
-            logGreen("Building ASPIN tangent with FROSch", mpiComm);
+            logGreen("Building ASPIN tangent", mpiComm);
             problem.assemble("Newton");
             problem.setBoundariesSystem();
             // Compute D\mathcal{F}(u) using FROSch and DF(u)
             auto jacobian = problem.getSystem()->getBlock(0, 0)->getXpetraMatrix();
-            logGreen("Global num entries: " +
-                         std::to_string(problem.getSystem()->getBlock(0, 0)->getXpetraMatrix()->getGlobalNumEntries()),
-                     mpiComm);
             jacobianGhosts->setAllToScalar(ST::zero());
             jacobianGhosts->resumeFill();
             jacobianGhosts->doImport(*jacobian, *uniqueToOverlappingGhostsImporter, Xpetra::ADD);

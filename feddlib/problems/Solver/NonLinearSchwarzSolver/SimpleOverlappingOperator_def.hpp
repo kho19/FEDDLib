@@ -33,11 +33,18 @@ SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(NonLinearPr
       uniqueMap_(), importerUniqueToGhosts_(), x_Ghosts_(), y_unique_(), y_Ghosts_(),
       bcFlagOverlappingGhosts_(), problem_(problem) {
     // Override the combine mode of the FROSch operator base object from the nonlinear Schwarz configuration
-    if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Averaging")) {
+    auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Restricted");
+    if (combineModeTemp == "Averaging") {
         this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Averaging;
-    } else if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Full")) {
+    } else if (combineModeTemp == "Full") {
         this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Full;
-    } else if (!this->ParameterList_->get("Combine Mode", "Restricted").compare("Restricted")) {
+    } else if (combineModeTemp == "Restricted") {
+        this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted;
+    } else {
+        if (this->MpiComm_->getRank() == 0) {
+            std::cerr << "\nInvalid Recombination Mode in SimpleOverlappingOperator: \"" << combineModeTemp
+                      << "\". Defaulting to \"Restricted\"" << std::endl;
+        }
         this->Combine_ = OverlappingOperator<SC, LO, GO, NO>::CombinationType::Restricted;
     }
 }
@@ -120,7 +127,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
 
     //  Apply DF(u_i)
     this->OverlappingMatrix_->apply(*x_Ghosts_, *x_Ghosts_, mode, ST::one(), ST::zero());
-   // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do
+    // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do
     // not affect the solution
     for (int i = 0; i < bcFlagOverlappingGhosts_->size(); i++) {
         if (bcFlagOverlappingGhosts_->at(i) == -99) {
@@ -180,7 +187,8 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     y.update(alpha, *y_unique_, beta);
 }
 
-// The standard way to apply this operator is with the local Jacobians --> usePreonditionerOnly is not required for this.
+// The standard way to apply this operator is with the local Jacobians --> usePreonditionerOnly is not required for
+// this.
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y,
                                                       bool usePreconditionerOnly, ETransp mode, SC alpha,
@@ -383,10 +391,10 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::describe(FancyOStream &out, cons
                                 << rowvals[j] << ") ";
                         }
                     } // globally or locally indexed
-                } // vl == VERB_EXTREME
+                }     // vl == VERB_EXTREME
                 out << endl;
             } // for each row r on this process
-        } // if (myRank == curRank)
+        }     // if (myRank == curRank)
 
         // Give output time to complete
         comm->barrier();

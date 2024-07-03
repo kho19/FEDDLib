@@ -1,6 +1,7 @@
 #include "feddlib/core/FE/Domain.hpp"
 #include "feddlib/core/FEDDCore.hpp"
 #include "feddlib/core/General/ExporterParaView.hpp"
+#include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Mesh/MeshPartitioner.hpp"
 #include "feddlib/problems/Solver/NonLinearSolver.hpp"
 #include "feddlib/problems/specific/NonLinElasticity.hpp"
@@ -75,7 +76,6 @@ void zeroDirichlet3D(double *x, double *res, double t, const double *parameters)
 
     return;
 }
-
 
 typedef unsigned UN;
 typedef default_sc SC;
@@ -256,16 +256,21 @@ int main(int argc, char *argv[]) {
     elasticitySolver.solve(elasticity);
     FEDD_TIMER_STOP(SolveTimer);
 
+    auto rankVec = Teuchos::RCP<MultiVector<SC, LO, GO, NO>>(new MultiVector<SC, LO, GO, NO>(domain->getMapUnique()));
+    rankVec->putScalar(comm->getRank());
+
     if (parameterListAll->sublist("General").get("ParaViewExport", false)) {
         Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exParaDisp(new ExporterParaView<SC, LO, GO, NO>());
 
         Teuchos::RCP<const MultiVector<SC, LO, GO, NO>> exportSolutionU = elasticity.getSolution()->getBlock(0);
+        Teuchos::RCP<const MultiVector<SC, LO, GO, NO>> rank = rankVec;
 
         exParaDisp->setup("displacement", domain->getMesh(), domain->getFEType());
 
         UN dofsPerNode = dim;
 
         exParaDisp->addVariable(exportSolutionU, "u", "Vector", dofsPerNode, domain->getMapUnique());
+    exParaDisp->addVariable(rank, "rank", "Scalar", 1, domain->getMapUnique());
         exParaDisp->save(0.0);
         Teuchos::TimeMonitor::report(std::cout);
     }
