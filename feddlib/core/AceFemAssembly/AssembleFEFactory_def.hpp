@@ -49,6 +49,10 @@ typename AssembleFEFactory<SC,LO,GO,NO>::AssembleFEPtr_Type AssembleFEFactory<SC
 		Teuchos::RCP<AssembleFE_NonLinElas2<SC,LO,GO,NO>> assembleFESpecific(new AssembleFE_NonLinElas2<SC,LO,GO,NO>(flag,nodesRefConfig, params,tuple) );
 		assembleFE = assembleFESpecific;
 	}
+	else if(problemType == "NonLinearElasticity2D"){
+		Teuchos::RCP<AssembleFE_NonLinElas2D<SC,LO,GO,NO>> assembleFESpecific(new AssembleFE_NonLinElas2D<SC,LO,GO,NO>(flag,nodesRefConfig, params,tuple) );
+		assembleFE = assembleFESpecific;
+	}
 	else if(problemType == "SCI_NH"){
 		Teuchos::RCP<AssembleFE_SCI_NH<SC,LO,GO,NO>> assembleFESpecific(new AssembleFE_SCI_NH<SC,LO,GO,NO>(flag,nodesRefConfig, params,tuple) );
 		assembleFE = assembleFESpecific;

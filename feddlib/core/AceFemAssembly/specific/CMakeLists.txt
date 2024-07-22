@@ -20,6 +20,9 @@ SET(AceFemAssemblySpecific_HEADERS
 	AceFemAssembly/specific/AssembleFE_NonLinElas2_decl.hpp
 	AceFemAssembly/specific/AssembleFE_NonLinElas2_def.hpp
 	AceFemAssembly/specific/AssembleFE_NonLinElas2.hpp
+  AceFemAssembly/specific/AssembleFE_NonLinElas2D_decl.hpp
+	AceFemAssembly/specific/AssembleFE_NonLinElas2D_def.hpp
+	AceFemAssembly/specific/AssembleFE_NonLinElas2D.hpp
 	AceFemAssembly/specific/AssembleFE_SCI_NH_decl.hpp
 	AceFemAssembly/specific/AssembleFE_SCI_NH_def.hpp
 	AceFemAssembly/specific/AssembleFE_SCI_NH.hpp
@@ -48,6 +51,7 @@ SET(AceFemAssemblySpecific_SOURCES
 	AceFemAssembly/specific/AssembleFE_LinElas.cpp
 	AceFemAssembly/specific/AssembleFE_NonLinElas.cpp
 	AceFemAssembly/specific/AssembleFE_NonLinElas2.cpp
+  AceFemAssembly/specific/AssembleFE_NonLinElas2D.cpp
 	AceFemAssembly/specific/AssembleFE_SCI_NH.cpp
 	AceFemAssembly/specific/AssembleFE_SCI_SMC_MLCK.cpp
 	AceFemAssembly/specific/AssembleFE_SCI_SMC_Active_Growth_Reorientation.cpp
