@@ -39,24 +39,21 @@ class AssembleFE_NonLinElas2D : public AssembleFE<SC, LO, GO, NO> {
             @param[in] block ID i
     */
     void assembleJacobianBlock(LO i) override {};
-    /*!
-            \brief Update the parameter read from the ParameterList.
-            @param[in] Parameter as read from the xml file
-    */
-    void updateParameter(string type, double value) override;
 
   protected:
     AssembleFE_NonLinElas2D(int flag, vec2D_dbl_Type nodesRefConfig, ParameterListPtr_Type parameters,
                             tuple_disk_vec_ptr_Type tuple);
 
   private:
-    void assemblyNonLinElas(SmallMatrixPtr_Type &elementMatrix);
+    void assemblyNonLinElas2D(SmallMatrixPtr_Type &elementMatrix);
 
     friend class AssembleFEFactory<SC, LO, GO, NO>; // Must have for specfic classes
 
     double E_;
-    double lambda_;
+    double density_;
     double poissonRatio_;
+    double forceX_;
+    double forceY_;
     string FEType_; // FEType of Disk
 
     int dofs_; // Degrees of freedom per node

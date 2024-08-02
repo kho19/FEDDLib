@@ -8,7 +8,10 @@
 #include "feddlib/problems/Solver/NonLinearSolver.hpp"
 #include "feddlib/problems/specific/NonLinElasAssFE.hpp"
 #include <Teuchos_GlobalMPISession.hpp>
+#include <Teuchos_StackedTimer.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
+
+// TODO: remove lambda and add density of the material
 
 void zeroDirichlet2D(double *x, double *res, double t, const double *parameters) {
     res[0] = 0.;
@@ -59,6 +62,9 @@ int main(int argc, char *argv[]) {
 
     Teuchos::RCP<const Teuchos::Comm<int>> comm = Xpetra::DefaultPlatform::getDefaultPlatform().getComm();
 
+    Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Nonlinear Schwarz solver", true));
+    TimeMonitor::setStackedTimer(stackedTimer);
+ 
     // Command Line Parameters
     Teuchos::CommandLineProcessor myCLP;
     string ulib_str = "Tpetra";
@@ -68,6 +74,7 @@ int main(int argc, char *argv[]) {
     string xmlProblemFile = "parametersProblem.xml";
     myCLP.setOption("problemfile", &xmlProblemFile, ".xml file with Inputparameters.");
     string xmlSchwarzSolverFile = "parametersSolverNonLinSchwarz.xml";
+    // string xmlSchwarzSolverFile = "parametersSolverNonLinSchwarz.xml";
     myCLP.setOption("schwarzsolverfile", &xmlSchwarzSolverFile, ".xml file with Inputparameters.");
 
     myCLP.recogniseAllOptions(true);
@@ -151,49 +158,50 @@ int main(int argc, char *argv[]) {
     std::vector<double> funcParams{static_cast<double>(dim)};
     bcFactory->addBC(Helper::currentSolutionDirichlet, -99, 0, domain, "Dirichlet", dim, funcParams);
 
-    // Export boundary condition flags for ParaView
-    // Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exParaF(new ExporterParaView<SC, LO, GO, NO>());
-    // Teuchos::RCP<MultiVector<SC, LO, GO, NO>> exportSolution(new MultiVector<SC, LO, GO,
-    // NO>(domain->getMapUnique())); vec_int_ptr_Type BCFlags = domain->getBCFlagUnique(); Teuchos::ArrayRCP<SC> entries
-    // = exportSolution->getDataNonConst(0);
-    //
-    // for (int i = 0; i < entries.size(); i++) {
-    //     entries[i] = BCFlags->at(i);
-    // }
-    //
-    // Teuchos::RCP<const MultiVector<SC, LO, GO, NO>> exportSolutionConst = exportSolution;
-    // exParaF->setup("Flags", domain->getMesh(), FEType);
-    // exParaF->addVariable(exportSolutionConst, "Flags", "Scalar", 1, domain->getMapUnique(),
-    // domain->getMapUniqueP2()); exParaF->save(0.0);
+    NonLinElasAssFE<SC, LO, GO, NO> NonLinElasAssFE(domain, FEType, parameterListAll);
 
-    NonLinElasAssFE<SC, LO, GO, NO> nonLinearElasticity(domain, FEType, parameterListAll);
-
-    nonLinearElasticity.addBoundaries(bcFactory);
-    nonLinearElasticity.addRhsFunction(rhs2D);
+    NonLinElasAssFE.addBoundaries(bcFactory);
+    NonLinElasAssFE.addRhsFunction(rhs2D);
 
     double force = parameterListAll->sublist("Parameter").get("Volume force", 0.);
     double degree = 0;
-    nonLinearElasticity.addParemeterRhs(force);
-    nonLinearElasticity.addParemeterRhs(degree);
+    NonLinElasAssFE.addParemeterRhs(force);
+    NonLinElasAssFE.addParemeterRhs(degree);
 
-    nonLinearElasticity.initializeProblem();
-    nonLinearElasticity.reInitSpecificProblemVectors(domain->getMapVecFieldOverlappingGhosts());
-    nonLinearElasticity.assemble();
-    nonLinearElasticity.setBoundaries();
-    nonLinearElasticity.setBoundariesRHS();
+    NonLinElasAssFE.initializeProblem();
+    NonLinElasAssFE.reInitSpecificProblemVectors(domain->getMapVecFieldOverlappingGhosts());
+    NonLinElasAssFE.assemble();
+    NonLinElasAssFE.setBoundaries();
+    NonLinElasAssFE.setBoundariesRHS();
 
-    std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "Newton");
+    // std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "Newton");
+    std::string nlSolverType = "NonLinearSchwarz";
     NonLinearSolver<SC, LO, GO, NO> nlSolver(nlSolverType);
-    nlSolver.solve(nonLinearElasticity);
+    FEDD_TIMER_START(SolveTimer, " - Schwarz - global solve");
+    nlSolver.solve(NonLinElasAssFE);
+    FEDD_TIMER_STOP(SolveTimer);
+
     comm->barrier();
 
+    Teuchos::TimeMonitor::report(cout, "FEDD");
+    stackedTimer->stop("Nonlinear Schwarz solver");
+    StackedTimer::OutputOptions options;
+    options.output_fraction = options.output_histogram = options.output_minmax = true;
+    stackedTimer->report((std::cout), comm, options);
+ 
+    auto rankVec = Teuchos::RCP<MultiVector<SC, LO, GO, NO>>(new MultiVector<SC, LO, GO, NO>(domain->getMapUnique()));
+    rankVec->putScalar(comm->getRank());
+  
     if (parameterListAll->sublist("General").get("ParaViewExport", false)) {
         Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exPara(new ExporterParaView<SC, LO, GO, NO>());
 
         exPara->setup("displacements", domain->getMesh(), FEType);
 
-        MultiVectorConstPtr_Type valuesSolidConst = nonLinearElasticity.getSolution()->getBlock(0);
+        MultiVectorConstPtr_Type valuesSolidConst = NonLinElasAssFE.getSolution()->getBlock(0);
+        MultiVectorConstPtr_Type rank = rankVec;
+
         exPara->addVariable(valuesSolidConst, "valuesNonLinElasAssFE", "Vector", dim, domain->getMapUnique());
+        exPara->addVariable(rank, "rank", "Scalar", 1, domain->getMapUnique());
         exPara->save(0.0);
     }
     return (EXIT_SUCCESS);

@@ -86,6 +86,8 @@ public:
     Teuchos::RCP< Thyra::LinearOpBase<SC> > create_W_op() const;
     
     Teuchos::RCP<Thyra::PreconditionerBase<SC> > create_W_prec() const;
+
+    void reInitSpecificProblemVectors(const MapConstPtr_Type newMap) override;
     
     mutable Teuchos::RCP<TimeSteppingTools>	timeSteppingTool_;
 

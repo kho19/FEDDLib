@@ -270,7 +270,7 @@ int main(int argc, char *argv[]) {
         UN dofsPerNode = dim;
 
         exParaDisp->addVariable(exportSolutionU, "u", "Vector", dofsPerNode, domain->getMapUnique());
-    exParaDisp->addVariable(rank, "rank", "Scalar", 1, domain->getMapUnique());
+        exParaDisp->addVariable(rank, "rank", "Scalar", 1, domain->getMapUnique());
         exParaDisp->save(0.0);
         Teuchos::TimeMonitor::report(std::cout);
     }

@@ -372,7 +372,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::exportCoarseBasis() {
     std::vector<Teuchos::RCP<const FEDD::Map<LO, GO, NO>>> blockMaps(numberOfBlocks);
     // Build corresponding map object
     for (UN i = 0; i < numberOfBlocks; i++) {
-        int dofsPerNode = pList->get("DofsPerNode" + std::to_string(i + 1), 1);
+        int dofsPerNode = pLCoarse->get("DofsPerNode" + std::to_string(i + 1), 1);
         Teuchos::RCP<const FEDD::Map<LO, GO, NO>> map;
         if (dofsPerNode > 1) {
             if (!problem_.is_null()) {

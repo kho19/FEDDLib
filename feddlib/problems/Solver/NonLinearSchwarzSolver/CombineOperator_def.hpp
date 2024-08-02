@@ -50,12 +50,12 @@ template <class SC, class LO, class GO, class NO> int CombineOperator<SC, LO, GO
 }
 
 template <class SC, class LO, class GO, class NO>
-typename CombineOperator<SC, LO, GO, NO>::ConstXMapPtr CombineOperator<SC, LO, GO, NO>::getDomainMap() const {
+const typename CombineOperator<SC, LO, GO, NO>::ConstXMapPtr CombineOperator<SC, LO, GO, NO>::getDomainMap() const {
     return OperatorVector_[0]->getDomainMap();
 }
 
 template <class SC, class LO, class GO, class NO>
-typename CombineOperator<SC, LO, GO, NO>::ConstXMapPtr CombineOperator<SC, LO, GO, NO>::getRangeMap() const {
+const typename CombineOperator<SC, LO, GO, NO>::ConstXMapPtr CombineOperator<SC, LO, GO, NO>::getRangeMap() const {
     return OperatorVector_[0]->getRangeMap();
 }
 

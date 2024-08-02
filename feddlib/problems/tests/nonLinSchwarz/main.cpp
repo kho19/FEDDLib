@@ -206,8 +206,8 @@ int main(int argc, char *argv[]) {
     FEDD_TIMER_STOP(SolveTimer);
 
     comm->barrier();
-    Teuchos::TimeMonitor::report(cout, "FEDD");
 
+    Teuchos::TimeMonitor::report(cout, "FEDD");
     stackedTimer->stop("Nonlinear Schwarz solver");
     StackedTimer::OutputOptions options;
     options.output_fraction = options.output_histogram = options.output_minmax = true;

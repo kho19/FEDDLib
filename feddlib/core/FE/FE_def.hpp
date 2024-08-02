@@ -472,7 +472,7 @@ void FE<SC,LO,GO,NO>::assemblyNonLinearElasticity(int dim,
 
 	/// Tupel construction follows follwing pattern:
 	/// string: Physical Entity (i.e. Velocity) , string: Discretisation (i.e. "P2"), int: Degrees of Freedom per Node, int: Number of Nodes per element)
-	int numNodes=6;
+	int numNodes=3;
 	if(dim==3){
 		numNodes=10;
 	}
@@ -482,10 +482,13 @@ void FE<SC,LO,GO,NO>::assemblyNonLinearElasticity(int dim,
 
     int neoHookeNum = params->sublist("Parameter").get("Neo-Hooke Modell",1);
 
-    string nonLinElasModell = "NonLinearElasticity2";
-    if(neoHookeNum == 1)
-        nonLinElasModell = "NonLinearElasticity";
-
+    string nonLinElasModell = "NonLinearElasticity2D";
+    if (dim == 3){
+        nonLinElasModell = "NonLinearElasticity2";
+        if(neoHookeNum == 1) {
+          nonLinElasModell = "NonLinearElasticity";
+        }
+    }
     //cout << " ######## Assembly Modell: " << nonLinElasModell << " ############ " <<  endl;
 
 

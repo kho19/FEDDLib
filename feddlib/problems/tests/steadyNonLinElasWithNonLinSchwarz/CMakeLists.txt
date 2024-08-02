@@ -12,16 +12,20 @@ TRIBITS_ADD_TEST(
 
 TRIBITS_COPY_FILES_TO_BINARY_DIR(data_steadyNonLinElasWithNonLinSchwarz
 	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-	SOURCE_FILES parametersPrec.xml  parametersProblem.xml parametersSolver.xml
+  SOURCE_FILES parametersProblem.xml parametersSolverNonLinSchwarz.xml
 	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
-	DEST_FILES parametersPrec.xml  parametersProblem.xml parametersSolver.xml
+  DEST_FILES parametersProblem.xml parametersSolverNonLinSchwarz.xml
   EXEDEPS steadyNonLinElasWithNonLinSchwarz
 )
 
 TRIBITS_COPY_FILES_TO_BINARY_DIR(mesh_steadyNonLinElasWithNonLinSchwarz
 	SOURCE_DIR ${CMAKE_SOURCE_DIR}/meshes
-	SOURCE_FILES cube_h_1.mesh
+  SOURCE_FILES beam2D7k.mesh
+  SOURCE_FILES beam2D26k.mesh
+  SOURCE_FILES beam2D59k.mesh
 	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
-	DEST_FILES cube_h_1.mesh
+  DEST_FILES beam2D7k.mesh
+  DEST_FILES beam2D26k.mesh
+  DEST_FILES beam2D59k.mesh
   EXEDEPS steadyNonLinElasWithNonLinSchwarz
 )

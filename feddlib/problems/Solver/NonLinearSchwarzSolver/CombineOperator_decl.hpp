@@ -51,9 +51,9 @@ class CombineOperator : public SchwarzOperator<SC, LO, GO, NO> {
     virtual void apply(const XMultiVector &x, XMultiVector &y, bool usePreconditionerOnly, ETransp mode = NO_TRANS,
                        SC alpha = ScalarTraits<SC>::one(), SC beta = ScalarTraits<SC>::zero()) const = 0;
 
-    virtual ConstXMapPtr getDomainMap() const;
+    virtual const ConstXMapPtr getDomainMap() const;
 
-    virtual ConstXMapPtr getRangeMap() const;
+    virtual const ConstXMapPtr getRangeMap() const;
 
     virtual void describe(FancyOStream &out, const EVerbosityLevel verbLevel = Describable::verbLevel_default) const;
 

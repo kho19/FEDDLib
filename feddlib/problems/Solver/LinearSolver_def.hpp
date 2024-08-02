@@ -22,21 +22,21 @@ LinearSolver<SC,LO,GO,NO>::~LinearSolver(){}
 template<class SC,class LO,class GO,class NO>
 int LinearSolver<SC,LO,GO,NO>::solve(Problem_Type* problem, BlockMultiVectorPtr_Type rhs, std::string type ){
 
-    int its=0;
-    if (!type.compare("Monolithic") || !type.compare("MonolithicConstPrec"))
-        its = solveMonolithic( problem, rhs, type );
-    else if (!type.compare("Teko")){
+    int its = 0;
+    if (!type.compare("Monolithic") || !type.compare("MonolithicConstPrec")) {
+        FEDD_TIMER_START(GMRESTimer, " - FEDD - GMRES solve");
+        its = solveMonolithic(problem, rhs, type);
+        FEDD_TIMER_STOP(GMRESTimer);
+    } else if (!type.compare("Teko")) {
 #ifdef FEDD_HAVE_TEKO
 //        its = solveTeko( problem, rhs );
         its = solveBlock( problem, rhs, "Teko" );
 #else
         TEUCHOS_TEST_FOR_EXCEPTION( true, std::logic_error, "Teko not found! Build Trilinos with Teko.");
 #endif
-    }
-    else if (type=="Diagonal" || type=="Triangular"){
+    } else if (type == "Diagonal" || type == "Triangular") {
         its = solveBlock( problem, rhs, type );
-    }
-    else
+    } else
         TEUCHOS_TEST_FOR_EXCEPTION( true, std::logic_error, "Unkown solver type.");
 
     return its;

@@ -136,10 +136,6 @@ void NonLinElasAssFE<SC,LO,GO,NO>::reAssemble(std::string type) const {
         fUnique->exportFromVector( fRep, true, "Add" );
 
         this->residualVec_->addBlock( fUnique, 0 );
-            
-        assembleSourceTermLoadstepping();
-
-
     }
     else if(type=="Newton"){ //we already assemble the new tangent when we calculate the stresses above
         
@@ -374,6 +370,11 @@ void NonLinElasAssFE<SC,LO,GO,NO>::calculateNonLinResidualVec(std::string type, 
         this->bcFactory_->setBCMinusVector( this->residualVec_, this->solution_, time );
     }
     
+}
+
+template <class SC, class LO, class GO, class NO>
+void NonLinElasAssFE<SC, LO, GO, NO>::reInitSpecificProblemVectors(const MapConstPtr_Type newMap) {
+    this->u_rep_ = Teuchos::rcp(new MultiVector_Type(newMap));
 }
 }
 #endif
