@@ -1,7 +1,8 @@
 <ParameterList name="solver">
 
-  <Parameter name="Nonlin Schwarz Variant" type="string" value="ASPEN" />
-  <Parameter name="Levels" type="int" value="1" />
+  <Parameter name="Nonlin Schwarz Variant" type="string" value="H1" /><!-- Additive, H1 -->
+  <Parameter name="Use ASPEN" type="bool" value="true" />
+  <Parameter name="Levels" type="int" value="2" />
   <Parameter name="Overlap" type="int" value="2" />
   <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
   <Parameter name="Zero Initial Guess" type="bool" value="false" />
@@ -60,6 +61,7 @@
         <ParameterList name="InterfacePartitionOfUnity">
           <Parameter name="Type" type="string" value="RGDSW" />
           <ParameterList name="RGDSW">
+            <Parameter name="Distance Function" type="string" value="Inverse Euclidean" />
             <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph" />
             <Parameter name="Type" type="string" value="Full" />
             <ParameterList name="Custom">
