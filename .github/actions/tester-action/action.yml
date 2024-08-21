@@ -1,21 +1,19 @@
-name: Hello, World!
-description: Greet someone and record the time
-author: GitHub Actions
+name: CI
 
-# Define your inputs here.
-inputs:
-  who-to-greet:
-    description: Who to greet
-    required: true
-    default: World
+on:
+  push:
+    branches:
+      - main
 
-# Define your outputs here.
-outputs:
-  time:
-    description: The time we greeted you
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-runs:
-  using: docker
-  image: Dockerfile
-  env:
-    INPUT_WHO_TO_GREET: ${{ inputs.who-to-greet }}
+    steps:
+    - name: Pull public Docker image from GHCR
+      run: docker pull ghcr.io/<repository-name>/my-app:trilinos
+
+        # TODO: kho write script to compile FEDDLib and run tests in run-tests.sh
+        # How to make FEDDLib configure script available for the build?
+    - name: Run tests
+      run: docker run ghcr.io/<repository-name>/my-app:trilinos ./run-tests.sh
