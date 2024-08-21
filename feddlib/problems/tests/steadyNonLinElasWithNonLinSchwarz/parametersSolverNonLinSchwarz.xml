@@ -6,7 +6,6 @@
   <Parameter name="Overlap" type="int" value="3" />
   <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
   <Parameter name="Zero Initial Guess" type="bool" value="false" />
-    <Parameter name="Distance Function" type="string" value="Inverse Euclidean" />
 
   <ParameterList name="ThyraSolver"> <!-- Solver used by the FEDD::Problem object in the inner Newton -->
     <Parameter name="Linear Solver Type" type="string" value="Amesos2" />
@@ -51,7 +50,6 @@
   <ParameterList name="Coarse Nonlinear Schwarz"> <!-- Same list as passed to
     IPOUHarmonicCoarseOperator in FROSch -->
 
-    <Parameter name="Distance Function" type="string" value="Inverse Euclidean" />
     <Parameter name="Store Phi" type="bool" value="true" />
     <Parameter name="DofsPerNode1" type="int" value="2"/>
 
@@ -65,6 +63,7 @@
         <ParameterList name="InterfacePartitionOfUnity">
           <Parameter name="Type" type="string" value="RGDSW" />
           <ParameterList name="RGDSW">
+            <Parameter name="Distance Function" type="string" value="Inverse Euclidean" />
             <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph" />
             <Parameter name="Type" type="string" value="Full" />
             <ParameterList name="Custom">
