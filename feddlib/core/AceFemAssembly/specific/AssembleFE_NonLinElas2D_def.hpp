@@ -80,8 +80,9 @@ void AssembleFE_NonLinElas2D<SC, LO, GO, NO>::assemblyNonLinElas2D(SmallMatrixPt
     // domainData[3] = forceY_;
     domainData[2] = 0;
     domainData[3] = 0;
+    // Density has no influence on Jacobian or residual, probably only on body force
     domainData[4] = density_;
-    // TODO: kho what is a suitable thickness to use?
+    //Thickness does have an influence on the Jacobian and the residual
     domainData[5] = 1.;
     // domainData = {3000, 0.2, 0.0, 0.0, 2.0, 1.1};
     // domainData = {3000, 0.2, forceX_, forceY_, 2.0, 1.1};

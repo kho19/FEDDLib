@@ -160,7 +160,7 @@ int main(int argc, char *argv[]) {
             domainP1->buildMesh(1, "Square", dim, FEType, n, m, numProcsCoarseSolve);
         }
         partitionerP1 = MeshPartitioner<SC, LO, GO, NO>(domainP1Array, pListPartitioner, "P1", dim);
-        partitionerP1.buildOverlappingDualGraphFromDistributedParMETIS(0, 1);
+        partitionerP1.buildOverlappingDualGraphFromDistributedParMETIS(0, overlap);
         partitionerP1.buildSubdomainFromDualGraphStructured(0);
     } else if (!meshType.compare("unstructured")) {
         partitionerP1.readMesh();

@@ -1,13 +1,13 @@
-on: [push]
-
-jobs:
-  hello_world_job:
-    runs-on: ubuntu-latest
-    name: FEDDLib tester
-    steps:
-      - name: Checkout latest version of code
-        uses: actions/checkout@v3
-
-      - name: Compile the FEDDLib
-        id: Compile
-        uses: ./.github/actions/tester-action
+# on: [push]
+#
+# jobs:
+#   hello_world_job:
+#     runs-on: ubuntu-latest
+#     name: FEDDLib tester
+#     steps:
+#       - name: Checkout latest version of code
+#         uses: actions/checkout@v3
+#
+#       - name: Compile the FEDDLib
+#         id: Compile
+#         uses: ./.github/actions/tester-action

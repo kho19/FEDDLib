@@ -3,7 +3,7 @@
         <Parameter name="Dimension"							    type="int"   	value="2"/>
         <Parameter name="Discretization"                        type="string"   value="P1"/>
         <Parameter name="Mesh Type" type="string" value="unstructured"/> <!--structured, unstructured -->
-        <Parameter name="Volume force" type="double" value="-7.5"/>
+        <Parameter name="Volume force" type="double" value="-7e3"/>
 	    <!-- <Parameter name="Source Type" type="string"   value="volume"/> -->
         <Parameter name="Mesh Delimiter"					    type="string"   value=" "/>
         <Parameter name="H/h"							    	type="int"   	value="10"/>   
@@ -12,7 +12,7 @@
         <Parameter name="Criterion" type="string" value="Residual"/>     
  	<Parameter name="Material model" type="string" value="Neo-Hooke"/><!--Saint Venant-Kirchhoff,Neo-Hooke, Mooney-Rivlin -->
         <Parameter name="Neo-Hooke Modell" type="int" value="2"/><!--different energy functions -->
-        <Parameter name="Density" type="double"   value="1."/>
+        <Parameter name="Density" type="double"   value="7.83e-6."/>
 	 <Parameter name="Poisson Ratio"					        type="double"   value="0.3"/>        
          <Parameter name="Mu" type="double" value="80.77"/>
         <Parameter name="Mu1" type="double" value="2.0e+6"/>

@@ -1,10 +1,10 @@
 <ParameterList name="solver">
 
-  <Parameter name="Nonlin Schwarz Variant" type="string" value="H1" /><!-- Additive, H1 -->
+  <Parameter name="Nonlin Schwarz Variant" type="string" value="Additive" /><!-- Additive, H1 -->
   <Parameter name="Use ASPEN" type="bool" value="true" />
   <Parameter name="Levels" type="int" value="2" />
   <Parameter name="Overlap" type="int" value="3" />
-  <Parameter name="Combine Mode" type="string" value="Restricted" /> <!-- Averaging, Full, Restricted -->
+  <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
   <Parameter name="Zero Initial Guess" type="bool" value="false" />
 
   <ParameterList name="ThyraSolver"> <!-- Solver used by the FEDD::Problem object in the inner Newton -->
@@ -63,6 +63,8 @@
         <ParameterList name="InterfacePartitionOfUnity">
           <Parameter name="Type" type="string" value="RGDSW" />
           <ParameterList name="RGDSW">
+            <!--Specify the RGDSW coarse space type here 1.0 (Constant) or 2.2 (Inverse Euclidean)-->
+            <!-- <Parameter name="Distance Function" type="string" value="Constant" /> -->
             <Parameter name="Distance Function" type="string" value="Inverse Euclidean" />
             <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph" />
             <Parameter name="Type" type="string" value="Full" />
