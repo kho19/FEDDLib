@@ -44,7 +44,6 @@
         <Parameter name="Contiguous" type="bool" value="true"/>
         
         <Parameter name="Mesh 1 Name" type="string" value="beam2D26k.mesh"/>
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="beam2D7k.mesh"/> -->
     </ParameterList>
     
     <ParameterList name="General">
