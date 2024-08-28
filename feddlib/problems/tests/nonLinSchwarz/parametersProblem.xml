@@ -2,7 +2,7 @@
     <ParameterList name="Parameter">
         <Parameter name="Dimension" type="int" value="2"/>
         <Parameter name="H/h" type="int" value="10"/>
-        <Parameter name="Mesh Type" type="string" value="structured"/>
+        <Parameter name="Mesh Type" type="string" value="unstructured"/>
         <Parameter name="Discretization" type="string" value="P1"/><!--P1, P2-->
         <Parameter name="relNonLinTol" type="double" value="1.0e-4"/>
         <Parameter name="MaxNonLinIts" type="int" value="50"/>
@@ -11,10 +11,7 @@
 
     <ParameterList name="Mesh Partitioner">
         <Parameter name="Contiguous" type="bool" value="true"/>
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="square.mesh"/> -->
-        <Parameter name="Mesh 1 Name" type="string" value="square_2500.mesh"/>
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="square_10k.mesh"/> -->
-        <!-- <Parameter name="Mesh 1 Name" type="string" value="square_900.mesh"/> -->
+        <Parameter name="Mesh 1 Name" type="string" value="square.mesh"/>
         <!-- <Parameter name="Mesh 1 Name" type="string" value="circle2D_1800.mesh"/> -->
     </ParameterList>
 

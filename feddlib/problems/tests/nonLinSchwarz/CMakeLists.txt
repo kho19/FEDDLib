@@ -22,14 +22,8 @@ TRIBITS_COPY_FILES_TO_BINARY_DIR(mesh_nonLinSchwarz
 	SOURCE_DIR ${CMAKE_SOURCE_DIR}/meshes
   SOURCE_FILES rectangle.mesh
 	SOURCE_FILES square.mesh
-	SOURCE_FILES square_900.mesh
-  SOURCE_FILES square_2500.mesh
-  SOURCE_FILES square_10k.mesh
 	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
   DEST_FILES rectangle.mesh
 	DEST_FILES square.mesh
-	DEST_FILES square_900.mesh
-  DEST_FILES square_2500.mesh
-  DEST_FILES square_10k.mesh
   EXEDEPS nonLinSchwarz
 )
