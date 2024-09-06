@@ -607,21 +607,21 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
     auto useASPEN = problem.getParameterList()->get("Use ASPEN", true);
 
-    //TODO: kho make these pointers to const block maps?
-    auto mapOverlapping = Teuchos::rcp( new BlockMap_Type( 0 ) );
-    auto mapOverlappingGhosts = Teuchos::rcp( new BlockMap_Type( 0 ) );
-    auto mapUnique = Teuchos::rcp( new BlockMap_Type( 0 ) );
+    // TODO: kho make these pointers to const block maps?
+    auto mapOverlapping = Teuchos::rcp(new BlockMap_Type(0));
+    auto mapOverlappingGhosts = Teuchos::rcp(new BlockMap_Type(0));
+    auto mapUnique = Teuchos::rcp(new BlockMap_Type(0));
     int approxEntriesPerRow = 0;
     for (auto i = 0; i < domainVec.size(); i++) {
         approxEntriesPerRow = std::max(approxEntriesPerRow, domainVec.at(0)->getApproxEntriesPerRow());
         if (problem.getDofsPerNode(i) > 1) {
             mapOverlapping->addBlock(domainVec.at(i)->getMapVecFieldOverlapping(), i);
-            mapOverlappingGhosts->addBlock(domainVec.at(i)->getMapVecFieldOverlappingGhosts(),i);
-            mapUnique->addBlock(domainVec.at(i)->getMapVecFieldUnique(),i);
+            mapOverlappingGhosts->addBlock(domainVec.at(i)->getMapVecFieldOverlappingGhosts(), i);
+            mapUnique->addBlock(domainVec.at(i)->getMapVecFieldUnique(), i);
         } else {
-            mapOverlapping->addBlock(domainVec.at(i)->getMesh()->getMapOverlapping(),i);
-            mapOverlappingGhosts->addBlock(domainVec.at(i)->getMesh()->getMapOverlappingGhosts(),i);
-            mapUnique->addBlock(domainVec.at(i)->getMesh()->getMapUnique(),i);
+            mapOverlapping->addBlock(domainVec.at(i)->getMesh()->getMapOverlapping(), i);
+            mapOverlappingGhosts->addBlock(domainVec.at(i)->getMesh()->getMapOverlappingGhosts(), i);
+            mapUnique->addBlock(domainVec.at(i)->getMesh()->getMapUnique(), i);
         }
     }
     auto mapOverlappingMerged = mapOverlapping->getMergedMap();
@@ -694,11 +694,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     Teuchos::RCP<Xpetra::Import<LO, GO>> uniqueToOverlappingGhostsImporter;
     ParameterListPtr_Type params = Teuchos::parameterList();
     if (!useASPEN) {
-        jacobianGhosts = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(
-            mapOverlappingGhostsMerged()->getXpetraMap(), approxEntriesPerRow);
-        uniqueToOverlappingGhostsImporter =
-            Xpetra::ImportFactory<LO, GO>::Build(mapUniqueMerged()->getXpetraMap(),
-                                                 mapOverlappingGhostsMerged()->getXpetraMap());
+        jacobianGhosts = Xpetra::MatrixFactory<SC, LO, GO, NO>::Build(mapOverlappingGhostsMerged()->getXpetraMap(),
+                                                                      approxEntriesPerRow);
+        uniqueToOverlappingGhostsImporter = Xpetra::ImportFactory<LO, GO>::Build(
+            mapUniqueMerged()->getXpetraMap(), mapOverlappingGhostsMerged()->getXpetraMap());
         // So we can call doImport after calling resumeFill on a fillComplete matrix
         params->set("Optimize Storage", false);
     }
@@ -739,7 +738,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         // g fulfills the boundary conditions
         logGreen("Computing nonlinear Schwarz operator", mpiComm);
         rhsCombineOperator->apply(*problem.getSolution()->getMergedVector()->getXpetraMultiVector(),
-                              *g->getXpetraMultiVectorNonConst());
+                                  *g->getXpetraMultiVectorNonConst());
         if (numLevels == 2) {
             // Update SimpleCoarseOperator to ensure it wraps the current CoarseNonLinearSchwarzOperator
             simpleCoarseOperator->initialize(coarseOperator);
@@ -755,44 +754,46 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
             auto jacobian = problem.getSystem()->getMergedMatrix()->getXpetraMatrix();
             jacobianGhosts->setAllToScalar(ST::zero());
             jacobianGhosts->resumeFill();
-            // TODO: kho build the importer so that it importes between merged versions of these maps
+            // TODO: kho build the importer so that it imports between merged versions of these maps
             jacobianGhosts->doImport(*jacobian, *uniqueToOverlappingGhostsImporter, Xpetra::ADD);
             jacobianGhosts->fillComplete(params);
-            localJacobian =
-                FROSch::ExtractLocalSubdomainMatrix(jacobianGhosts.getConst(), mapOverlappingGhostsMerged()->getXpetraMap());
+            localJacobian = FROSch::ExtractLocalSubdomainMatrix(jacobianGhosts.getConst(),
+                                                                mapOverlappingGhostsMerged()->getXpetraMap());
         }
-            // TODO: kho need to modify getBCFlagOverlappingGhosts here for merged system
-       simpleOverlappingOperator->initialize(serialComm, localJacobian, mapOverlappingMerged()->getXpetraMap(),
-                                             mapOverlappingGhostsMerged()->getXpetraMap(), mapUniqueMerged()->getXpetraMap(),
-                                             domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
-       simpleOverlappingOperator->compute();
-       // Convert SchwarzOperator to Thyra::LinearOpBase
-       auto xpetraOverlappingOperator = Teuchos::rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleCombineOperator);
+        // TODO: kho need to modify getBCFlagOverlappingGhosts here for merged system
+        simpleOverlappingOperator->initialize(serialComm, localJacobian, mapOverlappingMerged()->getXpetraMap(),
+                                              mapOverlappingGhostsMerged()->getXpetraMap(),
+                                              mapUniqueMerged()->getXpetraMap(),
+                                              domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
+        simpleOverlappingOperator->compute();
+        // Convert SchwarzOperator to Thyra::LinearOpBase
+        auto xpetraOverlappingOperator =
+            Teuchos::rcp_static_cast<Xpetra::Operator<SC, LO, GO, NO>>(simpleCombineOperator);
 
-       Teuchos::RCP<FROSch::TpetraPreconditioner<SC, LO, GO, NO>> tpetraFROSchOverlappingOperator(
-           new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(xpetraOverlappingOperator));
+        Teuchos::RCP<FROSch::TpetraPreconditioner<SC, LO, GO, NO>> tpetraFROSchOverlappingOperator(
+            new FROSch::TpetraPreconditioner<SC, LO, GO, NO>(xpetraOverlappingOperator));
 
-       auto tpetraOverlappingOperator =
-           Teuchos::rcp_static_cast<Tpetra::Operator<SC, LO, GO, NO>>(tpetraFROSchOverlappingOperator);
+        auto tpetraOverlappingOperator =
+            Teuchos::rcp_static_cast<Tpetra::Operator<SC, LO, GO, NO>>(tpetraFROSchOverlappingOperator);
 
-       auto thyraOverlappingOperator = Thyra::createLinearOp(tpetraOverlappingOperator);
+        auto thyraOverlappingOperator = Thyra::createLinearOp(tpetraOverlappingOperator);
 
-       // Solve linear system with GMRES
-       logGreen("Solving outer linear system", mpiComm);
-       FEDD_TIMER_START(GMRESTimer, " - Schwarz - GMRES solve");
-       gmresIts += solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getThyraMultiVector(),
-                                   g->getThyraMultiVector(), problem.getParameterList());
-       FEDD_TIMER_STOP(GMRESTimer);
+        // Solve linear system with GMRES
+        logGreen("Solving outer linear system", mpiComm);
+        FEDD_TIMER_START(GMRESTimer, " - Schwarz - GMRES solve");
+        gmresIts += solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getThyraMultiVector(),
+                                    g->getThyraMultiVector(), problem.getParameterList());
+        FEDD_TIMER_STOP(GMRESTimer);
 
-       // Update the current solution
-       // solution = alpha * deltaSolution + beta * solution
-       problem.solution_->update(-ST::one(), deltaSolution, ST::one());
-       // Compute the residual
-       problem.calculateNonLinResidualVec("reverse");
-       residual = problem.calculateResidualNorm();
-       relativeResidual = residual / residual0;
+        // Update the current solution
+        // solution = alpha * deltaSolution + beta * solution
+        problem.solution_->update(-ST::one(), deltaSolution, ST::one());
+        // Compute the residual
+        problem.calculateNonLinResidualVec("reverse");
+        residual = problem.calculateResidualNorm();
+        relativeResidual = residual / residual0;
 
-       outerNonLinIts += 1;
+        outerNonLinIts += 1;
     }
     auto itersVecSubdomains = nonLinearSchwarzOp->getRunStats();
     auto itersVecCoarse = coarseOperator->getRunStats();
