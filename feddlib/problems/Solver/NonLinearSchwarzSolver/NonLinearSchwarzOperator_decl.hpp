@@ -95,6 +95,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     using BlockMatrixPtrFEDD = typename Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>>;
     using BlockMultiVectorPtrFEDD = typename Teuchos::RCP<FEDD::BlockMultiVector<SC, LO, GO, NO>>;
     using MapConstPtrFEDD = typename Teuchos::RCP<const FEDD::Map<LO, GO, NO>>;
+    using BlockMapPtrFEDD = typename Teuchos::RCP<FEDD::BlockMap<LO, GO, NO>>;
     using ST = typename Teuchos::ScalarTraits<SC>;
 
   public:
@@ -135,8 +136,8 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     // Tangent of the nonlinear problem R_iDF(u_i)P_i as used in ASPEN
     BlockMatrixPtrFEDD localJacobianGhosts_;
     // Local (serial) overlapping map object with one ghost layer
-    ConstXMapPtr mapOverlappingGhostsLocal_;
-    ConstXMapPtr mapVecFieldOverlappingGhostsLocal_;
+    BlockMapPtrFEDD blockMapVecFieldOverlappingGhostsLocal_;
+    BlockMapPtrFEDD blockMapOverlappingGhostsLocal_;
 
     // Newtons method params
     double relNewtonTol_;
@@ -148,19 +149,19 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     BlockMultiVectorPtrFEDD multiplicity_;
 
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
-    ConstXMapPtr mapRepeatedMpiTmp_;
-    ConstXMapPtr mapUniqueMpiTmp_;
-    ConstXMapPtr mapVecFieldRepeatedMpiTmp_;
-    ConstXMapPtr mapVecFieldUniqueMpiTmp_;
+    BlockMapPtrFEDD blockMapRepeatedMpiTmp_;
+    BlockMapPtrFEDD blockMapUniqueMpiTmp_;
+    BlockMapPtrFEDD blockMapVecFieldRepeatedMpiTmp_;
+    BlockMapPtrFEDD blockMapVecFieldUniqueMpiTmp_;
 
     // Vectors for saving repeated and unique points
-    FEDD::vec2D_dbl_ptr_Type pointsRepTmp_;
-    FEDD::vec2D_dbl_ptr_Type pointsUniTmp_;
+  std::vector<FEDD::vec2D_dbl_ptr_Type> pointsRepTmp_;
+  std::vector<FEDD::vec2D_dbl_ptr_Type> pointsUniTmp_;
     // Vectors for saving the boundary conditions
-    FEDD::vec_int_ptr_Type bcFlagRepTmp_;
-    FEDD::vec_int_ptr_Type bcFlagUniTmp_;
+  std::vector<FEDD::vec_int_ptr_Type> bcFlagRepTmp_;
+  std::vector<FEDD::vec_int_ptr_Type> bcFlagUniTmp_;
     // Vector of elements for saving elementsC_
-    Teuchos::RCP<FEDD::Elements> elementsCTmp_;
+  std::vector<Teuchos::RCP<FEDD::Elements>> elementsCTmp_;
     // Current global solution of the problem
     BlockMatrixPtrFEDD systemTmp_;
     BlockMultiVectorPtrFEDD solutionTmp_;

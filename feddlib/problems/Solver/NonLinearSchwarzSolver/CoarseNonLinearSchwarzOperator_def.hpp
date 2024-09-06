@@ -78,6 +78,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     auto mesh = domainVec.at(0)->getMesh();
     ConstXMapPtr repeatedNodesMap;
     ConstXMapPtr repeatedDofsMap;
+    // TODO: kho need to construct the suitable merged maps at this stage. Compare with what BuildDofMaps and BuildNullSpace requires in FROSch.
     if (problem_->getDofsPerNode(0) > 1) {
         repeatedNodesMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
         repeatedDofsMap = domainVec.at(0)->getMapVecFieldRepeated()->getXpetraMap();
@@ -123,6 +124,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     }
     // nullSpaceBasis is a multiVector with one vector for each function in the nullspace e.g. translations and
     // rotations for elasticity. Each vector contains the nullspace function on the repeated map.
+    // TODO: kho only need one node list for block systems? DofsMap holds information of matrix entries per node
     auto nullSpaceBasis = BuildNullSpace(dimension, nullSpaceType, repeatedDofsMap, dofsPerNode, dofsMaps,
                                          implicit_cast<ConstXMultiVectorPtr>(nodeList));
     // Build the vector of Dirichlet node indices

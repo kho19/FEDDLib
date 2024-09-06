@@ -33,6 +33,8 @@ public:
     typedef typename Problem_Type::MatrixPtr_Type MatrixPtr_Type;
 
     typedef Teuchos::RCP<const Map<LO, GO, NO>> MapConstPtr_Type;
+    typedef BlockMap<LO, GO, NO> BlockMap_Type;
+    typedef Teuchos::RCP<BlockMap_Type> BlockMapPtr_Type;
 
     typedef MultiVector<SC, LO, GO, NO> MultiVector_Type;
     typedef Teuchos::RCP<MultiVector_Type> MultiVectorPtr_Type;
@@ -69,11 +71,13 @@ private:
     void solveNewton(TimeProblem_Type& problem, double time, vec_dbl_ptr_Type valuesForExport = Teuchos::null );
 
     void solveExtrapolation(TimeProblem_Type& problem, double time);
-// ########## Nonlinear Schwarz related ##############
+    // ########## Nonlinear Schwarz related ##############
     void solveNonLinearSchwarz(NonLinearProblem_Type &problem);
 
-    int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp, MultiVectorPtr_Type x,
-                        MultiVectorConstPtr_Type b, ParameterListPtr_Type parameterList, bool verbose = false);
+    int solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp,
+                        Teuchos::RCP<Thyra::MultiVectorBase<SC>> thyraX,
+                        Teuchos::RCP<const Thyra::MultiVectorBase<SC>> thyraB, ParameterListPtr_Type parameterList,
+                        bool verbose = false);
 
     enum class NonlinSchwarzVariant { ASPIN, ASPEN };
 // ###################################################
