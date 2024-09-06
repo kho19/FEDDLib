@@ -10,10 +10,12 @@
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/NonLinearSumOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleCoarseOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/SimpleOverlappingOperator_decl.hpp"
+#include <Teuchos_RCPDecl.hpp>
 #include <Teuchos_VerboseObject.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <algorithm>
 #include <string>
+#include <vector>
 
 /*!
  Definition of NonLinearSolver
@@ -613,7 +615,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto mapUnique = Teuchos::rcp(new BlockMap_Type(0));
     int approxEntriesPerRow = 0;
     for (auto i = 0; i < domainVec.size(); i++) {
-        approxEntriesPerRow = std::max(approxEntriesPerRow, domainVec.at(0)->getApproxEntriesPerRow());
+        approxEntriesPerRow = std::max(approxEntriesPerRow, domainVec.at(i)->getApproxEntriesPerRow());
         if (problem.getDofsPerNode(i) > 1) {
             mapOverlapping->addBlock(domainVec.at(i)->getMapVecFieldOverlapping(), i);
             mapOverlappingGhosts->addBlock(domainVec.at(i)->getMapVecFieldOverlappingGhosts(), i);
@@ -672,6 +674,11 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
         Teuchos::rcpFromRef(problem), problem.getParameterList()));
     simpleCombineOperator->addOperator(simpleOverlappingOperator);
+    // Build vector of overlapping ghost boundary flags for the simple overlapping operator
+    auto bcFlagOverlappingGhostsVec = std::vector<vec_int_ptr_Type>(domainVec.size());
+    for (int i = 0; i < domainVec.size(); i++) {
+        bcFlagOverlappingGhostsVec.at(i) = domainVec.at(i)->getMesh()->getBCFlagOverlappingGhosts();
+    }
 
     auto simpleCoarseOperator = Teuchos::rcp(new FROSch::SimpleCoarseOperator<SC, LO, GO, NO>(
         problem.system_->getMergedMatrix()->getXpetraMatrix(), problem.getParameterList()));
@@ -754,17 +761,14 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
             auto jacobian = problem.getSystem()->getMergedMatrix()->getXpetraMatrix();
             jacobianGhosts->setAllToScalar(ST::zero());
             jacobianGhosts->resumeFill();
-            // TODO: kho build the importer so that it imports between merged versions of these maps
             jacobianGhosts->doImport(*jacobian, *uniqueToOverlappingGhostsImporter, Xpetra::ADD);
             jacobianGhosts->fillComplete(params);
             localJacobian = FROSch::ExtractLocalSubdomainMatrix(jacobianGhosts.getConst(),
                                                                 mapOverlappingGhostsMerged()->getXpetraMap());
         }
-        // TODO: kho need to modify getBCFlagOverlappingGhosts here for merged system
         simpleOverlappingOperator->initialize(serialComm, localJacobian, mapOverlappingMerged()->getXpetraMap(),
                                               mapOverlappingGhostsMerged()->getXpetraMap(),
-                                              mapUniqueMerged()->getXpetraMap(),
-                                              domainVec.at(0)->getMesh()->getBCFlagOverlappingGhosts());
+                                              mapUniqueMerged()->getXpetraMap(), bcFlagOverlappingGhostsVec);
         simpleOverlappingOperator->compute();
         // Convert SchwarzOperator to Thyra::LinearOpBase
         auto xpetraOverlappingOperator =
@@ -782,9 +786,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         logGreen("Solving outer linear system", mpiComm);
         FEDD_TIMER_START(GMRESTimer, " - Schwarz - GMRES solve");
         gmresIts += solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getThyraMultiVector(),
-                                    g->getThyraMultiVector(), problem.getParameterList());
+                                    g->getThyraMultiVector(), problem.getParameterList(), Teuchos::rcp_const_cast<Teuchos::Comm<int>>(mpiComm));
         FEDD_TIMER_STOP(GMRESTimer);
 
+        deltaSolution->split();
         // Update the current solution
         // solution = alpha * deltaSolution + beta * solution
         problem.solution_->update(-ST::one(), deltaSolution, ST::one());
@@ -828,7 +833,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 template <class SC, class LO, class GO, class NO>
 int NonLinearSolver<SC, LO, GO, NO>::solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp,
                                                      Teuchos::RCP<Thyra::MultiVectorBase<SC>> thyraX, Teuchos::RCP<const Thyra::MultiVectorBase<SC>> thyraB,
-                                                     ParameterListPtr_Type parameterList, bool verbose) {
+                                                     ParameterListPtr_Type parameterList, Teuchos::RCP<Teuchos::Comm<int>> comm, bool verbose) {
     int its = 0;
     thyraX->assign(0.);
 

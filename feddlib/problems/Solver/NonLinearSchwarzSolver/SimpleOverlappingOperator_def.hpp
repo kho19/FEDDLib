@@ -29,9 +29,9 @@ namespace FROSch {
 template <class SC, class LO, class GO, class NO>
 SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(NonLinearProblemPtrFEDD problem,
                                                                      ParameterListPtr parameterList)
-    : OverlappingOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
-      uniqueMap_(), importerUniqueToGhosts_(), x_Ghosts_(), y_unique_(), y_Ghosts_(),
-      bcFlagOverlappingGhosts_(), problem_(problem) {
+    : OverlappingOperator<SC, LO, GO, NO>(problem->system_->getMergedMatrix()->getXpetraMatrix(), parameterList),
+      uniqueMap_(), importerUniqueToGhosts_(), x_Ghosts_(), y_unique_(), y_Ghosts_(), bcFlagOverlappingGhostsVec_(),
+      problem_(problem) {
     // Override the combine mode of the FROSch operator base object from the nonlinear Schwarz configuration
     auto combineModeTemp = problem_->getParameterList()->get("Combine Mode", "Restricted");
     if (combineModeTemp == "Averaging") {
@@ -50,10 +50,9 @@ SimpleOverlappingOperator<SC, LO, GO, NO>::SimpleOverlappingOperator(NonLinearPr
 }
 
 template <class SC, class LO, class GO, class NO>
-int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(CommPtr serialComm, ConstXMatrixPtr jacobianGhosts,
-                                                          ConstXMapPtr overlappingMap,
-                                                          ConstXMapPtr overlappingGhostsMap, ConstXMapPtr uniqueMap,
-                                                          FEDD::vec_int_ptr_Type bcFlagOverlappingGhosts) {
+int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(
+    CommPtr serialComm, ConstXMatrixPtr jacobianGhosts, ConstXMapPtr overlappingMap, ConstXMapPtr overlappingGhostsMap,
+    ConstXMapPtr uniqueMap, std::vector<FEDD::vec_int_ptr_Type> bcFlagOverlappingGhostsVec) {
     // AlgebraicOverlappingOperator does: calculates overlap multiplicity if needed and does symbolic extraction
     // of local subdomain matrix and initialization of solver (symbolic factorization)
     // Here we just read in the localSubdomainMatrix since it already exists
@@ -76,7 +75,7 @@ int SimpleOverlappingOperator<SC, LO, GO, NO>::initialize(CommPtr serialComm, Co
     this->SerialComm_ = serialComm;
     this->OverlappingMatrix_ = jacobianGhosts;
     uniqueMap_ = uniqueMap;
-    bcFlagOverlappingGhosts_ = bcFlagOverlappingGhosts;
+    bcFlagOverlappingGhostsVec_ = bcFlagOverlappingGhostsVec;
 
     // Initialize importer Ghosts -> Ghosts
     importerUniqueToGhosts_ = Xpetra::ImportFactory<LO, GO>::Build(uniqueMap, overlappingGhostsMap);
@@ -129,14 +128,20 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     this->OverlappingMatrix_->apply(*x_Ghosts_, *x_Ghosts_, mode, ST::one(), ST::zero());
     // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do
     // not affect the solution
-    for (int i = 0; i < bcFlagOverlappingGhosts_->size(); i++) {
-        if (bcFlagOverlappingGhosts_->at(i) == -99) {
-            for (int j = 0; j < problem_->getDofsPerNode(0); j++) {
-                x_Ghosts_->replaceLocalValue(problem_->getDofsPerNode(0) * i + j, 0, ST::zero());
+    int blockOffset = 0;
+    for (int i = 0; i < bcFlagOverlappingGhostsVec_.size(); i++) {
+        auto bcFlagOverlappingGhosts = bcFlagOverlappingGhostsVec_.at(i);
+        auto numNodesBlock = bcFlagOverlappingGhosts->size();
+        auto dofsPerNode = problem_->getDofsPerNode(i);
+        for (int j = 0; j < numNodesBlock; j++) {
+            if (bcFlagOverlappingGhostsVec_.at(i)->at(j) == -99) {
+                for (int k = 0; k < dofsPerNode; k++) {
+                    x_Ghosts_->replaceLocalValue(blockOffset + dofsPerNode * j + k, 0, ST::zero());
+                }
             }
         }
+        blockOffset += numNodesBlock * dofsPerNode;
     }
-
     // Apply local solution
     // NOTE: if FROSch_OverlappingOperator->apply() did not expect a uniquely distributed input, it could be used here
     if (y_Ghosts_.is_null()) {
@@ -391,10 +396,10 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::describe(FancyOStream &out, cons
                                 << rowvals[j] << ") ";
                         }
                     } // globally or locally indexed
-                }     // vl == VERB_EXTREME
+                } // vl == VERB_EXTREME
                 out << endl;
             } // for each row r on this process
-        }     // if (myRank == curRank)
+        } // if (myRank == curRank)
 
         // Give output time to complete
         comm->barrier();

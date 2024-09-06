@@ -375,7 +375,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         }
     }
     // Assigning like this does not copy across the map pointer and results in a non-fillComplete matrix
-    /* localJacobian_->getBlock(0, 0) = problem_->system_->getBlock(0, 0); */
+    /* localJacobian_->getMergedMatrix() = problem_->system_->getBlock(0, 0); */
 
     // Set all solutions to zero except for rank 0 for testing
     /* if (this->MpiComm_->getRank() != 0) */
@@ -445,6 +445,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMul
     auto rcpFEDDX = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpX));
     auto rcpFEDDY = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpY));
 
+    // Using the solution to setup the block vectors correctly. Values are set with setMergedVector()
     auto feddX = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem_->solution_));
     auto feddY = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem_->solution_));
     // This copies pointers (not values) since the pointers are non-const
@@ -453,6 +454,8 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMul
     feddX->split();
     feddY->split();
     apply(feddX, feddY, alpha, beta);
+    feddY->merge();
+    y.update(ST::one(), *feddY->getMergedVector()->getXpetraMultiVector(), ST::zero());
 }
 
 template <class SC, class LO, class GO, class NO>

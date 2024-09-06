@@ -48,7 +48,7 @@ namespace FROSch {
 template <class SC, class LO, class GO, class NO>
 CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(NonLinearProblemPtrFEDD problem,
                                                                                ParameterListPtr parameterList)
-    : IPOUHarmonicCoarseOperator<SC, LO, GO, NO>(problem->system_->getBlock(0, 0)->getXpetraMatrix(), parameterList),
+    : IPOUHarmonicCoarseOperator<SC, LO, GO, NO>(problem->system_->getMergedMatrix()->getXpetraMatrix(), parameterList),
       problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, relNewtonTol_{}, absNewtonTol_{}, maxNumIts_{},
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
@@ -284,7 +284,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         problem_->setBoundariesSystem();
 
         // Update the coarse matrix and the coarse solver (coarse factorization)
-        this->K_ = problem_->system_->getBlock(0, 0)->getXpetraMatrix();
+        this->K_ = problem_->system_->getMergedMatrix()->getXpetraMatrix();
         this->setUpCoarseOperator();
 
         // Apply the coarse solution

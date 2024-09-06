@@ -18,6 +18,7 @@
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
 #include <stdexcept>
+#include <vector>
 
 /*!
  Declaration of ASPENOverlappingOperator
@@ -109,7 +110,7 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     };
     int initialize(CommPtr serialComm, ConstXMatrixPtr jacobianGhosts, ConstXMapPtr overlappingMap,
                    ConstXMapPtr overlappingGhostsMap, ConstXMapPtr uniqueMap,
-                   FEDD::vec_int_ptr_Type bcFlagOverlappingGhosts);
+                   std::vector<FEDD::vec_int_ptr_Type> bcFlagOverlappingGhostsVec);
 
     int compute() override;
 
@@ -145,7 +146,7 @@ class SimpleOverlappingOperator : public OverlappingOperator<SC, LO, GO, NO> {
     mutable XMultiVectorPtr y_Ghosts_;
 
     // Boundary condition flags for recognizing the ghost boundary
-    FEDD::vec_int_ptr_Type bcFlagOverlappingGhosts_;
+    std::vector<FEDD::vec_int_ptr_Type> bcFlagOverlappingGhostsVec_;
 
     // We need to know how many dofs per node there are. This is stored in the problem object. We keep a pointer to this
     // object here to avoid having to copy the vector around.

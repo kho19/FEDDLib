@@ -99,8 +99,8 @@ int main(int argc, char *argv[]) {
         MPI_Finalize();
         return 0;
     }
-    Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Steady Navier-Stokes", true));
-    TimeMonitor::setStackedTimer(stackedTimer);
+    // Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Steady Navier-Stokes", true));
+    // TimeMonitor::setStackedTimer(stackedTimer);
     ParameterListPtr_Type parameterListProblem = Teuchos::getParametersFromXmlFile(xmlProblemFile);
 
     ParameterListPtr_Type parameterListSolver = Teuchos::getParametersFromXmlFile(xmlSchwarzSolverFile);
@@ -187,8 +187,8 @@ int main(int argc, char *argv[]) {
     }
     // The current global solution must be set as the Dirichlet BC on the ghost nodes for nonlinear Schwarz solver to
     // correctly solve on the subdomains
+    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainVelocity, "Dirichlet", 2);
     bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainPressure, "Dirichlet", 1);
-    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainVelocity, "Dirichlet", 1);
     NavierStokes<SC, LO, GO, NO> navierStokes(domainVelocity, discVelocity, domainPressure, discPressure,
                                               parameterListAll);
 
@@ -213,10 +213,10 @@ int main(int argc, char *argv[]) {
     comm->barrier();
 
     Teuchos::TimeMonitor::report(cout);
-    stackedTimer->stop("Steady Navier-Stokes");
-    StackedTimer::OutputOptions options;
-    options.output_fraction = options.output_histogram = options.output_minmax = true;
-    stackedTimer->report((std::cout), comm, options);
+    // stackedTimer->stop("Steady Navier-Stokes");
+    // StackedTimer::OutputOptions options;
+    // options.output_fraction = options.output_histogram = options.output_minmax = true;
+    // stackedTimer->report((std::cout), comm, options);
 
     if (parameterListAll->sublist("General").get("ParaViewExport", false)) {
         Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exParaVelocity(new ExporterParaView<SC, LO, GO, NO>());
