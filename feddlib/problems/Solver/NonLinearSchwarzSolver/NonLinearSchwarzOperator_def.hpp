@@ -54,10 +54,12 @@ NonLinearSchwarzOperator<SC, LO, GO, NO>::NonLinearSchwarzOperator(CommPtr seria
       problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
       localJacobianGhosts_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
+      blockElementMapLocal_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))},
       blockMapOverlappingGhostsLocal_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))},
       blockMapVecFieldOverlappingGhostsLocal_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))}, relNewtonTol_{},
       absNewtonTol_{}, maxNumIts_{}, combinationMode_{},
       multiplicity_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
+      blockElementMapMpiTmp_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))},
       blockMapRepeatedMpiTmp_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))},
       blockMapUniqueMpiTmp_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))},
       blockMapVecFieldRepeatedMpiTmp_{Teuchos::rcp(new FEDD::BlockMap<LO, GO, NO>(1))},
@@ -136,13 +138,18 @@ template <class SC, class LO, class GO, class NO> int NonLinearSchwarzOperator<S
     for (int i = 0; i < domainVec.size(); i++) {
         auto tmpMPIMap = domainVec.at(i)->getMesh()->getMapOverlappingGhosts();
         auto mapOverlappingGhostsLocal =
-            Teuchos::rcp(new FEDD::Map<LO, GO, NO>(tmpMPIMap->getUnderlyingLib(), tmpMPIMap->getGlobalNumElements(),
+            Teuchos::rcp(new FEDD::Map<LO, GO, NO>(tmpMPIMap->getUnderlyingLib(), tmpMPIMap->getNodeNumElements(),
                                                    tmpMPIMap->getNodeNumElements(), 0, this->SerialComm_));
         auto mapVecFieldOverlappingGhostsLocal =
             mapOverlappingGhostsLocal->buildVecFieldMap(problem_->getDofsPerNode(i));
 
         blockMapOverlappingGhostsLocal_->addBlock(mapOverlappingGhostsLocal, i);
         blockMapVecFieldOverlappingGhostsLocal_->addBlock(mapVecFieldOverlappingGhostsLocal, i);
+        tmpMPIMap = rcp(new FEDD::Map<LO, GO, NO>(domainVec.at(i)->getDualGraph()->getRowMap()));
+        auto mapElementsOverlappingGhostsLocal =
+            Teuchos::rcp(new FEDD::Map<LO, GO, NO>(tmpMPIMap->getUnderlyingLib(), tmpMPIMap->getNodeNumElements(),
+                                                   tmpMPIMap->getNodeNumElements(), 0, this->SerialComm_));
+        blockElementMapLocal_->addBlock(mapElementsOverlappingGhostsLocal, i);
     }
 
     // Compute overlap multiplicity
@@ -199,6 +206,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         // Store all distributed properties that need replacing for local computations on domain level
 
         auto mesh = domainVec.at(i)->getMesh();
+        blockElementMapMpiTmp_->addBlock(mesh->getElementMap(), i);
         blockMapRepeatedMpiTmp_->addBlock(mesh->getMapRepeated(), i);
         blockMapUniqueMpiTmp_->addBlock(mesh->getMapUnique(), i);
         blockMapVecFieldRepeatedMpiTmp_->addBlock(domainVec.at(i)->getMapVecFieldRepeated(), i);
@@ -232,6 +240,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
                                                 mesh->pointsOverlappingGhosts_, mesh->bcFlagOverlappingGhosts_);
         domainVec.at(i)->replaceUniqueMembers(mapVecFieldOverlappingGhostsLocal, mapOverlappingGhostsLocal,
                                               mesh->pointsOverlappingGhosts_, mesh->bcFlagOverlappingGhosts_);
+        mesh->elementMap_ = blockElementMapLocal_->getBlock(i);
         mesh->setElementsC(mesh->elementsOverlappingGhosts_);
 
         if (problem_->getDofsPerNode(i) > 1) {
@@ -278,7 +287,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
             if (domainVec.at(i)->getMesh()->bcFlagOverlappingGhosts_->at(j) == -99) {
                 for (int k = 0; k < problem_->getDofsPerNode(i); k++) {
                     tempMV->replaceLocalValue(static_cast<GO>(problem_->getDofsPerNode(i) * j + k), 0,
-                                              x_->getBlock(i)->getData(0)[problem_->getDofsPerNode(0) * j + k]);
+                                              x_->getBlock(i)->getData(0)[problem_->getDofsPerNode(i) * j + k]);
                 }
             }
         }
@@ -315,7 +324,12 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         absResidual = problem_->calculateResidualNorm();
 
         if (nlIts == 0) {
-            residual0 = absResidual;
+            if (absResidual < absNewtonTol_) {
+                std::cout << "==> Exiting local Newton solver immediately: absolute residual is already below the tolerance." << std::endl;
+                break; // We are already done
+            } else {
+                residual0 = absResidual;
+            }
         }
 
         relResidual = absResidual / residual0;
@@ -405,6 +419,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         domainVec.at(i)->replaceUniqueMembers(blockMapVecFieldUniqueMpiTmp_->getBlock(i),
                                               blockMapUniqueMpiTmp_->getBlock(i), pointsUniTmp_.at(i),
                                               bcFlagUniTmp_.at(i));
+        mesh->elementMap_ = blockElementMapMpiTmp_->getBlock(i);
         // 5. replace elementsC_
         mesh->setElementsC(elementsCTmp_.at(i));
     }
@@ -423,7 +438,12 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     problem_->feFactory_ = feFactoryTmp_;
 
     for (int i = 0; i < domainVec.size(); i++) {
-        x_->getBlockNonConst(i)->replaceMap(domainVec.at(i)->getMapOverlappingGhosts());
+        if (problem_->getDofsPerNode(i) > 1) {
+            // Map of current input
+            x_->getBlockNonConst(i)->replaceMap(domainVec.at(i)->getMapVecFieldOverlappingGhosts());
+        } else {
+            x_->getBlockNonConst(i)->replaceMap(domainVec.at(i)->getMapOverlappingGhosts());
+        }
     }
     if (problem_->getDofsPerNode(0) > 1) {
         // 6. rebuild problem->u_rep_ to use repeated map

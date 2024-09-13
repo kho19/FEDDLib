@@ -78,7 +78,7 @@ void BlockMap<LO,GO,NO>::merge( ){
 }
 
 template <class LO, class GO, class NO>
-void BlockMap<LO,GO,NO>::print( ){
+void BlockMap<LO,GO,NO>::print( ) const {
     TEUCHOS_TEST_FOR_EXCEPTION( blockMap_.size()==0, std::logic_error,"BlockMap has no maps - nothing to print.");
     cout << " --- Blockmap size: " << blockMap_.size() << " --- " << endl;
     for (UN i=0; i<blockMap_.size(); i++) {

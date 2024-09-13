@@ -136,6 +136,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     // Tangent of the nonlinear problem R_iDF(u_i)P_i as used in ASPEN
     BlockMatrixPtrFEDD localJacobianGhosts_;
     // Local (serial) overlapping map object with one ghost layer
+    BlockMapPtrFEDD blockElementMapLocal_;
     BlockMapPtrFEDD blockMapVecFieldOverlappingGhostsLocal_;
     BlockMapPtrFEDD blockMapOverlappingGhostsLocal_;
 
@@ -149,6 +150,7 @@ class NonLinearSchwarzOperator : public SchwarzOperator<SC, LO, GO, NO>, public 
     BlockMultiVectorPtrFEDD multiplicity_;
 
     // Maps for saving the mpiComm maps of the problems domain when replacing them with serial maps
+    BlockMapPtrFEDD blockElementMapMpiTmp_;
     BlockMapPtrFEDD blockMapRepeatedMpiTmp_;
     BlockMapPtrFEDD blockMapUniqueMpiTmp_;
     BlockMapPtrFEDD blockMapVecFieldRepeatedMpiTmp_;

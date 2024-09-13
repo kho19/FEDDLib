@@ -786,7 +786,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         logGreen("Solving outer linear system", mpiComm);
         FEDD_TIMER_START(GMRESTimer, " - Schwarz - GMRES solve");
         gmresIts += solveThyraLinOp(thyraOverlappingOperator, deltaSolution->getThyraMultiVector(),
-                                    g->getThyraMultiVector(), problem.getParameterList(), Teuchos::rcp_const_cast<Teuchos::Comm<int>>(mpiComm));
+                                    g->getThyraMultiVector(), problem.getParameterList());
         FEDD_TIMER_STOP(GMRESTimer);
 
         deltaSolution->split();
@@ -833,7 +833,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 template <class SC, class LO, class GO, class NO>
 int NonLinearSolver<SC, LO, GO, NO>::solveThyraLinOp(Teuchos::RCP<const Thyra::LinearOpBase<SC>> thyraLinOp,
                                                      Teuchos::RCP<Thyra::MultiVectorBase<SC>> thyraX, Teuchos::RCP<const Thyra::MultiVectorBase<SC>> thyraB,
-                                                     ParameterListPtr_Type parameterList, Teuchos::RCP<Teuchos::Comm<int>> comm, bool verbose) {
+                                                     ParameterListPtr_Type parameterList, bool verbose) {
     int its = 0;
     thyraX->assign(0.);
 

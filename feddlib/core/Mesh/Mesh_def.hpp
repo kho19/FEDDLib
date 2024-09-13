@@ -743,7 +743,7 @@ void Mesh<SC, LO, GO, NO>::replaceRepeatedMembers(const MapPtr_Type newMap, cons
                                                   const vec_int_ptr_Type newBCs) const {
     // Ensure that all members being replaced have the same number of local elements
     TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(), std::runtime_error,
-                               "New memembers must have the same number of local elements");
+                               "New members must have the same number of local elements");
     this->mapRepeated_ = newMap;
     this->pointsRep_ = newPoints;
     this->bcFlagRep_ = newBCs;
@@ -754,7 +754,7 @@ void Mesh<SC, LO, GO, NO>::replaceUniqueMembers(const MapPtr_Type newMap, const 
                                                 const vec_int_ptr_Type newBCs) const {
     // Ensure that all members being replaced have the same number of local elements
     TEUCHOS_TEST_FOR_EXCEPTION(newMap->getNodeNumElements() != newPoints->size(), std::runtime_error,
-                               "New memembers must have the same number of local elements");
+                               "New members must have the same number of local elements");
     this->mapUnique_ = newMap;
     this->pointsUni_ = newPoints;
     this->bcFlagUni_ = newBCs;

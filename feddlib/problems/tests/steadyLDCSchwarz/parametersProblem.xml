@@ -6,7 +6,7 @@
     <Parameter name="Mesh Type" type="string" value="structured_ldc"/> <!--structured, structured_bfs, structured_ldc, unstructured -->
     <Parameter name="BC Type" type="string" value="LDC"/><!-- parabolic, parabolic_benchmark, partialCFD, LDC-->
     <Parameter name="Mesh Delimiter" type="string" value=" "/>
-    <Parameter name="H/h" type="int" value="8"/>
+    <Parameter name="H/h" type="int" value="10"/>
     <Parameter name="Symmetric gradient" type="bool" value="false"/>
     <Parameter name="Viscosity" type="double" value="1.0e-02"/>
     <Parameter name="Density" type="double" value="1.0"/>
@@ -16,9 +16,6 @@
     <Parameter name="absNonLinTol" type="double" value="1.0e-5"/>
     <Parameter name="MaxNonLinIts" type="int" value="10"/>
     <Parameter name="Set Zeros" type="bool" value="false"/>
-    <Parameter name="Myeps" type="double" value="1.0e-14"/>
-    <Parameter name="Combo" type="string" value="OR"/>
-    <Parameter name="Use WRMS" type="bool" value="false"/>
 
     </ParameterList>
     <ParameterList name="Mesh Partitioner">

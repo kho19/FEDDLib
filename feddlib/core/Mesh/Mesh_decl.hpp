@@ -231,7 +231,7 @@ template <class SC = default_sc, class LO = default_lo, class GO = default_go, c
     // Object containing all elements on current rank
     // Exposes a number of utility functions
     mutable ElementsPtr_Type elementsC_;
-    MapPtr_Type elementMap_;
+    mutable MapPtr_Type elementMap_;
     MapPtr_Type edgeMap_;
 
     mutable CommConstPtr_Type comm_;

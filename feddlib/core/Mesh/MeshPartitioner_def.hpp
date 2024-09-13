@@ -1827,7 +1827,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFromDualGraphStructured(cons
 
     // ================= Get missing element information in the overlap (excluding ghost layer) ===============
     // Contains (indices, flags, node coords)
-    auto missingElementsMV = communicateMissingElements(0, Teuchos::rcp(new Map<LO, GO, NO>(elementMapOverlapping)));
+    auto missingElementsMV = communicateMissingElements(meshNumber, Teuchos::rcp(new Map<LO, GO, NO>(elementMapOverlapping)));
     // Add the node indices to the corresponding index lists
     // More efficient to iterate over one vector in the multivector at a time
     for (auto i = 0; i < nodesPerElement; i++) {
@@ -1865,7 +1865,7 @@ void MeshPartitioner<SC, LO, GO, NO>::buildSubdomainFromDualGraphStructured(cons
     auto tempElementsOverlappingGhostsMap = Teuchos::rcp(
         new Map<LO, GO, NO>(underlyingLib, OTGO::invalid(), elementsOverlappingGhostsIndicesView, indexBase, comm_));
 
-    missingElementsMV = communicateMissingElements(0, tempElementsOverlappingGhostsMap);
+    missingElementsMV = communicateMissingElements(meshNumber, tempElementsOverlappingGhostsMap);
 
     mesh->pointsOverlappingGhosts_.reset(new std::vector<std::vector<double>>(
         mesh->mapOverlappingGhosts_->getNodeNumElements(), std::vector<double>(dim, -1.)));

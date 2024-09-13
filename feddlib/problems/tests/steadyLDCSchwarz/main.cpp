@@ -24,8 +24,16 @@
 
 using namespace std;
 
+void initialValue2D(double *x, double *res, double *parameters) { res[0] = 1;res[1] = 1; }
 // Required for setting the Dirichlet BC on the ghost points to the current global solution in nonlinear Schwarz
 void currentSolutionDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
+
+void zeroDirichlet(double *x, double *res, double t, const double *parameters) {
+
+    res[0] = 0.;
+
+    return;
+}
 
 void zeroDirichlet2D(double *x, double *res, double t, const double *parameters) {
 
@@ -38,7 +46,7 @@ void zeroDirichlet2D(double *x, double *res, double t, const double *parameters)
 // For Lid Driven Cavity Test
 void ldcFunc2D(double *x, double *res, double t, const double *parameters) {
 
-    res[0] = 1.; // * parameters[0];
+    res[0] = 1.;//* parameters[0];
     res[1] = 0.;
 
     return;
@@ -181,14 +189,16 @@ int main(int argc, char *argv[]) {
     if (!bcType.compare("LDC")) {
         parameter_vec.push_back(0.); // Dummy
         bcFactory->addBC(zeroDirichlet2D, 1, 0, domainVelocity, "Dirichlet", dim);
+        bcFactory->addBC(zeroDirichlet2D, 3, 0, domainVelocity, "Dirichlet", dim);
         bcFactory->addBC(ldcFunc2D, 2, 0, domainVelocity, "Dirichlet", dim, parameter_vec);
+        bcFactory->addBC(zeroDirichlet, 3, 1, domainPressure, "Dirichlet", 1);
     } else {
         TEUCHOS_TEST_FOR_EXCEPTION(true, std::logic_error, "Select a valid boundary condition.");
     }
     // The current global solution must be set as the Dirichlet BC on the ghost nodes for nonlinear Schwarz solver to
     // correctly solve on the subdomains
-    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainVelocity, "Dirichlet", 2);
-    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainPressure, "Dirichlet", 1);
+    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainVelocity, "Dirichlet", dim);
+    bcFactory->addBC(currentSolutionDirichlet, -99, 1, domainPressure, "Dirichlet", 1);
     NavierStokes<SC, LO, GO, NO> navierStokes(domainVelocity, discVelocity, domainPressure, discPressure,
                                               parameterListAll);
 
