@@ -22,7 +22,7 @@
  @version 1.0
  @copyright KH
  */
-// TODO: kho this class basically reimplements FROSch_CombineOperator. If FROSch used virtual inheritance this operator
+// NOTE: kho this class basically reimplements FROSch_CombineOperator. If FROSch used virtual inheritance this operator
 // could use most of the existing code since casting between NonlinearOperator and SchwarzOperator would be possible
 // (without using dynamic_cast)
 

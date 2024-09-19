@@ -382,7 +382,6 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
     // classes reassemble the tangent when calculating the residual
     problem_->setBoundariesSystem();
     auto blockMatDim = problem_->system_->size();
-    // TODO: kho is there a better way of doing this?
     for (int i = 0; i < blockMatDim; i++) {
         for (int j = 0; j < blockMatDim; j++) {
             localJacobianGhosts_->addBlock(problem_->system_->getBlock(i, j), i, j);
@@ -475,7 +474,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMul
     feddY->split();
     apply(feddX, feddY, alpha, beta);
     feddY->merge();
-    y.update(ST::one(), *feddY->getMergedVector()->getXpetraMultiVector(), ST::zero());
+    y.update(alpha, *feddY->getMergedVector()->getXpetraMultiVector(), beta);
 }
 
 template <class SC, class LO, class GO, class NO>

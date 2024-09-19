@@ -49,14 +49,18 @@ template <class SC, class LO, class GO, class NO>
 CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(NonLinearProblemPtrFEDD problem,
                                                                                ParameterListPtr parameterList)
     : IPOUHarmonicCoarseOperator<SC, LO, GO, NO>(problem->system_->getMergedMatrix()->getXpetraMatrix(), parameterList),
-      problem_{problem}, x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, relNewtonTol_{}, absNewtonTol_{}, maxNumIts_{},
-      solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(1))},
-      rhsTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      sourceTermTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      previousSolutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))},
-      residualVecTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1))}, totalIters_{0} {
+      problem_{problem},
+      x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))}, relNewtonTol_{},
+      absNewtonTol_{}, maxNumIts_{}, coarseResidualVec_{}, coarseDeltaG0_{}, deltaG0Merged_{},
+      deltaG0_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      rhsTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      sourceTermTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      previousSolutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      residualVecTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
+      totalIters_{0} {
 
     // Ensure that the mesh object has been initialized and a dual graph generated
     auto domainPtr_vec = problem_->getDomainVector();
@@ -73,20 +77,6 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(N
 }
 
 template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::initialize() {
-
-    auto domainVec = problem_->getDomainVector();
-    auto mesh = domainVec.at(0)->getMesh();
-    ConstXMapPtr repeatedNodesMap;
-    ConstXMapPtr repeatedDofsMap;
-    // TODO: kho need to construct the suitable merged maps at this stage. Compare with what BuildDofMaps and BuildNullSpace requires in FROSch.
-    if (problem_->getDofsPerNode(0) > 1) {
-        repeatedNodesMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
-        repeatedDofsMap = domainVec.at(0)->getMapVecFieldRepeated()->getXpetraMap();
-    } else {
-        repeatedNodesMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
-        repeatedDofsMap = repeatedNodesMap;
-    }
-
     // Extract info from parameterList
     relNewtonTol_ =
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Relative Tolerance", 1.0e-6);
@@ -94,108 +84,249 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Absolute Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
     auto dimension = problem_->getParameterList()->sublist("Parameter").get("Dimension", 2);
-    auto dofsPerNode = problem_->getDofsPerNode(0);
     totalIters_ = 0;
 
-    // Initialize the underlying IPOUHarmonicCoarseOperator object
-    // dofs of a node are lumped together
-    int dofOrdering = 0;
-    auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(1);
-    BuildDofMaps(repeatedDofsMap, dofsPerNode, dofOrdering, repeatedNodesMap, dofsMaps);
+    auto domainVec = problem_->getDomainVector();
 
-    // Build nodeList
-    auto nodeListFEDD = mesh->getPointsRepeated();
-    auto nodeList = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(repeatedNodesMap, nodeListFEDD->at(0).size());
-    for (auto i = 0; i < nodeListFEDD->size(); i++) {
-        // pointsRepeated are distributed
-        for (auto j = 0; j < nodeListFEDD->at(0).size(); j++) {
-            nodeList->getVectorNonConst(j)->replaceLocalValue(i, nodeListFEDD->at(i).at(j));
+    Teuchos::RCP<const FEDD::Map<LO, GO, NO>> uniqueDofsMap;
+    if (domainVec.size() == 1) {
+
+        auto mesh = domainVec.at(0)->getMesh();
+        ConstXMapPtr repeatedNodesMap;
+        ConstXMapPtr repeatedDofsMap;
+        if (problem_->getDofsPerNode(0) > 1) {
+            repeatedNodesMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
+            repeatedDofsMap = domainVec.at(0)->getMapVecFieldRepeated()->getXpetraMap();
+            uniqueDofsMap = domainVec.at(0)->getMapVecFieldUnique();
+        } else {
+            repeatedNodesMap = domainVec.at(0)->getMapRepeated()->getXpetraMap();
+            repeatedDofsMap = repeatedNodesMap;
+            uniqueDofsMap = domainVec.at(0)->getMapUnique();
         }
-    }
 
-    // Build nullspace as in TwoLevelPreconditioner line 195
-    NullSpaceType nullSpaceType;
-    if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Laplace")) {
-        nullSpaceType = NullSpaceType::Laplace;
-    } else if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Linear Elasticity")) {
-        nullSpaceType = NullSpaceType::Elasticity;
-    } else {
-        FROSCH_ASSERT(false, "Null Space Type unknown.");
-    }
-    // nullSpaceBasis is a multiVector with one vector for each function in the nullspace e.g. translations and
-    // rotations for elasticity. Each vector contains the nullspace function on the repeated map.
-    // TODO: kho only need one node list for block systems? DofsMap holds information of matrix entries per node
-    auto nullSpaceBasis = BuildNullSpace(dimension, nullSpaceType, repeatedDofsMap, dofsPerNode, dofsMaps,
-                                         implicit_cast<ConstXMultiVectorPtr>(nodeList));
-    // Build the vector of Dirichlet node indices
-    // See FROSch::FindOneEntryOnlyRowsGlobal() for reference
-    auto dirichletBoundaryDofsVec = Teuchos::rcp(new std::vector<GO>(0));
-    int block = 0;
-    int loc = 0;
-    auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-    /* FEDD::logGreen("repeatedNodesmap", this->MpiComm_); */
-    /* repeatedNodesMap->describe(*out, VERB_EXTREME); */
-    /* FEDD::logGreen("bcFlagRep_", this->MpiComm_); */
-    /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 1); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 2); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 3); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    for (auto i = 0; i < repeatedNodesMap->getLocalNumElements(); i++) {
-        auto flag = mesh->bcFlagRep_->at(i);
-        // The vector vecFlag_ contains the flags that have been set with addBC().
-        // loc: local index in vecFlag_ of the flag if found. Is set by the function.
-        // block: block id in which to search. Needs to be provided to the function.
-        if (problem_->getBCFactory()->findFlag(flag, block, loc)) {
-            for (auto j = 0; j < dofsPerNode; j++) {
-                dirichletBoundaryDofsVec->push_back(repeatedDofsMap->getGlobalElement(dofsPerNode * i + j));
+        auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(uniqueDofsMap, 1));
+        deltaG0_->addBlock(tempMV, 0);
+
+        auto dofsPerNode = problem_->getDofsPerNode(0);
+
+        // Initialize the underlying IPOUHarmonicCoarseOperator object
+        // dofs of a node are lumped together
+        int dofOrdering = 0;
+        auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(1);
+        BuildDofMaps(repeatedDofsMap, dofsPerNode, dofOrdering, repeatedNodesMap, dofsMaps);
+
+        // Build nodeList
+        auto nodeListFEDD = mesh->getPointsRepeated();
+        auto nodeList = Xpetra::MultiVectorFactory<SC, LO, GO>::Build(repeatedNodesMap, nodeListFEDD->at(0).size());
+        for (auto i = 0; i < nodeListFEDD->size(); i++) {
+            // pointsRepeated are distributed
+            for (auto j = 0; j < nodeListFEDD->at(0).size(); j++) {
+                nodeList->getVectorNonConst(j)->replaceLocalValue(i, nodeListFEDD->at(i).at(j));
             }
         }
-    }
-    /* FEDD::logGreen("dirichletBoundaryDofsVec", this->MpiComm_); */
-    /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 1); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 2); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 3); */
-    /* std::cout << std::flush; */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
-    /* this->MpiComm_->barrier(); */
 
-    // Convert std::vector to ArrayRCP
-    auto dirichletBoundaryDofs = arcp<GO>(dirichletBoundaryDofsVec);
-    // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the coarse
-    // problem
-    IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(
-        dimension, dofsPerNode, repeatedNodesMap, dofsMaps, nullSpaceBasis,
-        implicit_cast<ConstXMultiVectorPtr>(nodeList), dirichletBoundaryDofs);
+        // Build nullspace as in TwoLevelPreconditioner line 195
+        NullSpaceType nullSpaceType;
+        if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Laplace")) {
+            nullSpaceType = NullSpaceType::Laplace;
+        } else if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Linear Elasticity")) {
+            nullSpaceType = NullSpaceType::Elasticity;
+        } else {
+            FROSCH_ASSERT(false, "Null Space Type unknown.");
+        }
+        // nullSpaceBasis is a multiVector with one vector for each function in the nullspace e.g. translations and
+        // rotations for elasticity. Each vector contains the nullspace function on the repeated map.
+        auto nullSpaceBasis = BuildNullSpace(dimension, nullSpaceType, repeatedDofsMap, dofsPerNode, dofsMaps,
+                                             implicit_cast<ConstXMultiVectorPtr>(nodeList));
+        // Build the vector of Dirichlet node indices
+        // See FROSch::FindOneEntryOnlyRowsGlobal() for reference
+        auto dirichletBoundaryDofsVec = Teuchos::rcp(new std::vector<GO>(0));
+        int block = 0;
+        int loc = 0;
+        auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
+        /* FEDD::logGreen("repeatedNodesmap", this->MpiComm_); */
+        /* repeatedNodesMap->describe(*out, VERB_EXTREME); */
+        /* FEDD::logGreen("bcFlagRep_", this->MpiComm_); */
+        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 1); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 2); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 3); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        for (auto i = 0; i < repeatedNodesMap->getLocalNumElements(); i++) {
+            auto flag = mesh->bcFlagRep_->at(i);
+            // The vector vecFlag_ contains the flags that have been set with addBC().
+            // loc: local index in vecFlag_ of the flag if found. Is set by the function.
+            // block: block id in which to search. Needs to be provided to the function.
+            if (problem_->getBCFactory()->findFlag(flag, block, loc)) {
+                for (auto j = 0; j < dofsPerNode; j++) {
+                    dirichletBoundaryDofsVec->push_back(repeatedDofsMap->getGlobalElement(dofsPerNode * i + j));
+                }
+            }
+        }
+        /* FEDD::logGreen("dirichletBoundaryDofsVec", this->MpiComm_); */
+        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 1); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 2); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 3); */
+        /* std::cout << std::flush; */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+        /* this->MpiComm_->barrier(); */
+
+        // Convert std::vector to ArrayRCP
+        auto dirichletBoundaryDofs = arcp<GO>(dirichletBoundaryDofsVec);
+        // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the coarse
+        // problem
+        IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(
+            dimension, dofsPerNode, repeatedNodesMap, dofsMaps, nullSpaceBasis,
+            implicit_cast<ConstXMultiVectorPtr>(nodeList), dirichletBoundaryDofs);
+    } else { // else we are dealing with a block system
+
+        // dofsPerNode, repeatedNodesMap, dofsMaps, nullSpaceBasis, nodeList, dirichletBoundaryDofs
+        // iPOUHarmonicCoarseOperator->initialize(dimension,dofsPerNode,   repeatedNodesMap,   dofsMaps, nullSpaceBasis,
+        // nodeList,   dirichletBoundaryDofs);
+        // iPOUHarmonicCoarseOperator->initialize(dimension,dofsPerNodeVec,repeatedNodesMapVec,dofsMapsVec,nullSpaceBasisVec,nodeListVec,dirichletBoundaryDofsVec);
+        // Dof count in each block
+        auto dofsPerNodeVec = Teuchos::ArrayRCP<unsigned>(domainVec.size());
+        // The distribution of dofs. One map for each block. This gets built heuristically in
+        // TwoLevelBlockPreconditioner using the unique distribution if not provided but only for one block.
+        auto repeatedDofsMapVec = Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::Map<LO, GO, NO>>>(domainVec.size());
+        // The distribution of nodes. This gets built from the distribution of dofs in TwoLevelBlockPreconditioner.
+        auto repeatedNodesMapVec = Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::Map<LO, GO, NO>>>(domainVec.size());
+        // The distribution of dofs, but this is a 2D vector. For each block there is a vector that contains a map entry
+        // for each dof, unlike repeatedDofsMapVec.
+        auto dofsMapsVec =
+            Teuchos::ArrayRCP<Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::Map<LO, GO, NO>>>>(domainVec.size());
+        // A multivector for each block. Columns in the multivector for each basis function
+        auto nullSpaceBasisVec =
+            Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::MultiVector<SC, LO, GO, NO>>>(domainVec.size());
+        // Coords of nodes. Can be different for each block
+        auto nodeListVec = Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::MultiVector<SC, LO, GO, NO>>>(domainVec.size());
+        // List of indices of the nodes that are on the Dirichlet boundary
+        auto dirichletBoundaryDofsVec = Teuchos::ArrayRCP<Teuchos::ArrayRCP<GO>>(domainVec.size());
+
+        deltaG0_ = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(domainVec.size()));
+        GO offset = 0;
+        for (int i = 0; i < domainVec.size(); i++) {
+            auto mesh = domainVec.at(i)->getMesh();
+            dofsPerNodeVec[i] = problem_->getDofsPerNode(i);
+            if (dofsPerNodeVec[i] > 1) {
+                repeatedNodesMapVec[i] = domainVec.at(i)->getMapRepeated()->getXpetraMap();
+                repeatedDofsMapVec[i] = domainVec.at(i)->getMapVecFieldRepeated()->getXpetraMap();
+                uniqueDofsMap = domainVec.at(i)->getMapVecFieldUnique();
+            } else {
+                repeatedNodesMapVec[i] = domainVec.at(i)->getMapRepeated()->getXpetraMap();
+                repeatedDofsMapVec[i] = repeatedNodesMapVec[i];
+                uniqueDofsMap = domainVec.at(i)->getMapUnique();
+            }
+
+            auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(uniqueDofsMap, 1));
+            deltaG0_->addBlock(tempMV, i);
+
+            // auto dofsPerNode = problem_->getDofsPerNode(0);
+
+            // Initialize the underlying IPOUHarmonicCoarseOperator object
+            // dofs of a node are lumped together
+            int dofOrdering = 0;
+            // TODO: kho repeatedNodesMap gets set by this function. Try passing in a dummy version and ensuring it is
+            // the same as the existing repeatedNodesMap
+            BuildDofMaps(repeatedDofsMapVec[i], dofsPerNodeVec[i], dofOrdering, repeatedNodesMapVec[i], dofsMapsVec[i], offset);
+            offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex()+1;
+
+            FEDD::logGreen("dofsMapsVec in block " + std::to_string(i), this->MpiComm_);
+            auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
+            for (int j = 0; j < dofsPerNodeVec[i]; j++) {
+                FEDD::logGreen("dofsMaps for dof " + std::to_string(j), this->MpiComm_);
+                dofsMapsVec[i][j]->describe(*out, VERB_EXTREME);
+            }
+            // Build nodeList
+            auto nodeListFEDD = mesh->getPointsRepeated();
+            // TODO: kho do I need to build the nodeList in a different way?
+            nodeListVec[i] =
+                Xpetra::MultiVectorFactory<SC, LO, GO>::Build(repeatedNodesMapVec[i], nodeListFEDD->at(i).size());
+            for (auto j = 0; j < nodeListFEDD->size(); j++) {
+                // pointsRepeated are distributed
+                for (auto k = 0; k < nodeListFEDD->at(j).size(); k++) {
+                    Teuchos::rcp_const_cast<Xpetra::MultiVector<SC, LO, GO, NO>>(nodeListVec[i])
+                        ->getVectorNonConst(k)
+                        ->replaceLocalValue(j, nodeListFEDD->at(j).at(k));
+                }
+            }
+
+            // Build nullspace as in TwoLevelPreconditioner line 195
+            NullSpaceType nullSpaceType;
+            if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Laplace")) {
+                nullSpaceType = NullSpaceType::Laplace;
+            } else if (!this->ParameterList_->get("Null Space Type", "Laplace").compare("Linear Elasticity")) {
+                nullSpaceType = NullSpaceType::Elasticity;
+            } else {
+                FROSCH_ASSERT(false, "Null Space Type unknown.");
+            }
+            // nullSpaceBasis is a multiVector with one vector for each function in the nullspace e.g. translations
+            // and rotations for elasticity. Each vector contains the nullspace function on the repeated map. At
+            // this point different nullspaces could be built for each block
+            nullSpaceBasisVec[i] = BuildNullSpace(dimension, nullSpaceType, repeatedDofsMapVec[i], dofsPerNodeVec[i],
+                                                  dofsMapsVec[i], implicit_cast<ConstXMultiVectorPtr>(nodeListVec[i]));
+            // Build the vector of Dirichlet node indices
+            // See FROSch::FindOneEntryOnlyRowsGlobal() for reference
+            int loc = 0;
+            auto tempDirichletBoundaryDofs = Teuchos::rcp(new std::vector<GO>(0));
+            for (auto j = 0; j < repeatedNodesMapVec[i]->getLocalNumElements(); j++) {
+                auto flag = mesh->bcFlagRep_->at(j);
+                // The vector vecFlag_ contains the flags that have been set with addBC().
+                // loc: local index in vecFlag_ of the flag if found. Is set by the function.
+                // block: block id in which to search. Needs to be provided to the function.
+                if (problem_->getBCFactory()->findFlag(flag, i, loc)) {
+                    for (auto k = 0; k < dofsPerNodeVec[i]; k++) {
+                        tempDirichletBoundaryDofs->push_back(
+                            repeatedDofsMapVec[i]->getGlobalElement(dofsPerNodeVec[i] * j + k));
+                    }
+                }
+            }
+            dirichletBoundaryDofsVec[i] = Teuchos::arcp<GO>(tempDirichletBoundaryDofs);
+        }
+        // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the
+        // coarse problem
+        IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(dimension, dofsPerNodeVec, repeatedNodesMapVec,
+                                                               dofsMapsVec, nullSpaceBasisVec, nodeListVec,
+                                                               dirichletBoundaryDofsVec);
+        // iPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(dimension, dofsPerNodeVec, repeatedNodesMapVec,
+        //                                                     dofsMapsVec, nullSpaceBasisVec, nodeListVec,
+        //                                                     dirichletBoundaryDofsVec);
+    }
+    coarseResidualVec_ =
+        Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
+    coarseDeltaG0_ =
+        Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
+    deltaG0Merged_ = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(deltaG0_->getMergedVector()->getMap()));
+
     return 0;
 }
 
@@ -204,17 +335,11 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
                                                            SC alpha, SC beta) {
 
     FEDD_TIMER_START(CoarseTimer, " - Schwarz - coarse solve");
-    TEUCHOS_TEST_FOR_EXCEPTION(!x->getBlock(0)->getMapXpetra()->isSameAs(*this->getDomainMap()), std::runtime_error,
-                               "input map does not correspond to domain map of nonlinear operator");
+    TEUCHOS_TEST_FOR_EXCEPTION(!x->getMergedVector()->getMap()->getXpetraMap()->isSameAs(*this->getDomainMap()),
+                               std::runtime_error, "input map does not correspond to domain map of nonlinear operator");
     x_ = x;
-
-    MapConstPtrFEDD uniqueDofsMap;
-    if (problem_->getDofsPerNode(0) > 1) {
-        uniqueDofsMap = problem_->getDomainVector().at(0)->getMapVecFieldUnique();
-    } else {
-        uniqueDofsMap = problem_->getDomainVector().at(0)->getMapUnique();
-    }
     // Save problem state
+    // Not replacing maps here --> much less needs replacing then in nonlinearSchwarzOperator
     systemTmp_ = problem_->system_;
     solutionTmp_ = problem_->getSolution();
     rhsTmp_ = problem_->rhs_;
@@ -231,14 +356,9 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     double relResidual = 1.;
     double absResidual = 1.;
     int nlIts = 0;
-    auto coarseResidualVec =
-        Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
-    auto coarseDeltaG0 =
-        Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
-    auto tempMV = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(uniqueDofsMap, 1));
-    auto deltaG0 = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
-    deltaG0->addBlock(tempMV, 0);
-
+    coarseResidualVec_->putScalar(0.);
+    coarseDeltaG0_->putScalar(0.);
+    deltaG0_->putScalar(0.);
     // Need to initialize the rhs_ and set boundary values in rhs_
     problem_->assemble();
     problem_->setBoundaries();
@@ -256,14 +376,21 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         problem_->calculateNonLinResidualVec("reverse");
 
         // Restrict the residual to the coarse space
-        this->applyPhiT(*problem_->getResidualVector()->getBlock(0)->getXpetraMultiVector(), *coarseResidualVec);
+        this->applyPhiT(*problem_->getResidualVector()->getMergedVector()->getXpetraMultiVector(), *coarseResidualVec_);
 
         Teuchos::Array<SC> residualArray(1);
-        coarseResidualVec->norm2(residualArray());
+        coarseResidualVec_->norm2(residualArray());
         absResidual = residualArray[0];
 
         if (nlIts == 0) {
-            residual0 = absResidual;
+            if (absResidual < absNewtonTol_) {
+                std::cout
+                    << "==> Exiting local Newton solver immediately: absolute residual is already below the tolerance."
+                    << std::endl;
+                break; // We are already done
+            } else {
+                residual0 = absResidual;
+            }
         }
 
         relResidual = absResidual / residual0;
@@ -288,16 +415,18 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         this->setUpCoarseOperator();
 
         // Apply the coarse solution
-        this->applyCoarseSolve(*coarseResidualVec, *coarseDeltaG0, ETransp::NO_TRANS);
+        this->applyCoarseSolve(*coarseResidualVec_, *coarseDeltaG0_, ETransp::NO_TRANS);
         // TODO: kho fix this in FROSch
         //  Required because applyCoarseSolve switches out the map without restoring initial map. BAD!!
-        coarseResidualVec->replaceMap(this->GatheringMaps_[this->GatheringMaps_.size() - 1]);
+        coarseResidualVec_->replaceMap(this->GatheringMaps_[this->GatheringMaps_.size() - 1]);
 
         // Project the coarse nonlinear correction update into the global space
-        this->applyPhi(*coarseDeltaG0, *deltaG0->getBlockNonConst(0)->getXpetraMultiVectorNonConst());
+        this->applyPhi(*coarseDeltaG0_, *deltaG0Merged_->getXpetraMultiVectorNonConst());
+        deltaG0_->setMergedVector(deltaG0Merged_);
+        deltaG0_->split();
 
         // Update the current coarse nonlinear correction g_0
-        problem_->solution_->update(ST::one(), *deltaG0, ST::one());
+        problem_->solution_->update(ST::one(), *deltaG0_, ST::one());
 
         nlIts++;
     }
@@ -328,16 +457,23 @@ template <class SC, class LO, class GO, class NO>
 void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, SC alpha, SC beta) {
     // This version of apply does not make sense for nonlinear operators
     // Wraps another apply() method for compatibility
-    auto feddX = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
-    auto feddY = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(1));
     // non owning rcp objects since they should not destroy x, y when going out of scope
     auto rcpX = Teuchos::rcp(&x, false);
     auto rcpY = Teuchos::rcp(&y, false);
+    auto rcpFEDDX = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpX));
+    auto rcpFEDDY = Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpY));
 
-    // TODO: kho this needs to be changed since the input vector is copied here (const)
-    feddX->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpX)), 0);
-    feddY->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(rcpY)), 0);
+    // Using the solution to setup the block vectors correctly. Values are set with setMergedVector()
+    auto feddX = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem_->solution_));
+    auto feddY = Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem_->solution_));
+    // This copies pointers (not values) since the pointers are non-const
+    feddX->setMergedVector(rcpFEDDX);
+    feddY->setMergedVector(rcpFEDDY);
+    feddX->split();
+    feddY->split();
     apply(feddX, feddY, alpha, beta);
+    feddY->merge();
+    y.update(alpha, *feddY->getMergedVector()->getXpetraMultiVector(), beta);
 }
 
 template <class SC, class LO, class GO, class NO>

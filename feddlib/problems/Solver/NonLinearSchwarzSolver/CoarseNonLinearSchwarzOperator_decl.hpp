@@ -16,6 +16,7 @@
 #include <Teuchos_ScalarTraitsDecl.hpp>
 #include <Teuchos_VerbosityLevel.hpp>
 #include <Xpetra_Matrix.hpp>
+#include <Xpetra_MultiVector_decl.hpp>
 
 /*!
  Declaration of CoarseNonLinearSchwarzOperator
@@ -136,6 +137,11 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     double relNewtonTol_;
     double absNewtonTol_;
     int maxNumIts_;
+    // Newtons method helpers
+    Teuchos::RCP<Xpetra::MultiVector<SC, LO, GO, NO>> coarseResidualVec_;
+    Teuchos::RCP<Xpetra::MultiVector<SC, LO, GO, NO>> coarseDeltaG0_;
+    Teuchos::RCP<FEDD::MultiVector<SC, LO, GO, NO>> deltaG0Merged_;
+    BlockMultiVectorPtrFEDD deltaG0_;
     // Temp. problem state params
     BlockMultiVectorPtrFEDD solutionTmp_;
     BlockMatrixPtrFEDD systemTmp_;
@@ -143,7 +149,7 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     BlockMultiVectorPtrFEDD sourceTermTmp_;
     BlockMultiVectorPtrFEDD previousSolutionTmp_;
     BlockMultiVectorPtrFEDD residualVecTmp_;
- 
+
     // Store total iteration count of inner Newton methods over all calls to apply()
     int totalIters_;
 };

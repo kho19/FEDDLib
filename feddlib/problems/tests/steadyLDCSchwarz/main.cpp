@@ -96,6 +96,8 @@ int main(int argc, char *argv[]) {
     myCLP.setOption("problemfile", &xmlProblemFile, ".xml file with Inputparameters.");
     string xmlSchwarzSolverFile = "parametersSolverNonLinSchwarz.xml";
     myCLP.setOption("schwarzsolverfile", &xmlSchwarzSolverFile, ".xml file with Inputparameters.");
+    bool debug = false;
+    myCLP.setOption("debug", "", &debug, "bool option for debugging");
 
     double length = 4.;
     myCLP.setOption("length", &length, "length of domain.");
@@ -107,6 +109,13 @@ int main(int argc, char *argv[]) {
         MPI_Finalize();
         return 0;
     }
+
+    if (comm->getRank() == 1 && debug) {
+        waitForGdbAttach<LO>();
+    }
+    comm->barrier();
+    comm->barrier();
+
     // Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Steady Navier-Stokes", true));
     // TimeMonitor::setStackedTimer(stackedTimer);
     ParameterListPtr_Type parameterListProblem = Teuchos::getParametersFromXmlFile(xmlProblemFile);
