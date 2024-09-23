@@ -325,7 +325,9 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
 
         if (nlIts == 0) {
             if (absResidual < absNewtonTol_) {
-                std::cout << "==> Exiting local Newton solver immediately: absolute residual is already below the tolerance." << std::endl;
+                std::cout
+                    << "==> Exiting local Newton solver immediately: absolute residual is already below the tolerance."
+                    << std::endl;
                 break; // We are already done
             } else {
                 residual0 = absResidual;

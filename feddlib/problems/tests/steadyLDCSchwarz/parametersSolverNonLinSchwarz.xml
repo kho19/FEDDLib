@@ -53,8 +53,8 @@
     <Parameter name="Store Phi" type="bool" value="true" />
     <Parameter name="DofsPerNode1" type="int" value="2"/>
 
-    <!-- <Parameter name="Null Space Type" type="string" value="Laplace" /> -->
-    <Parameter name="Null Space Type" type="string" value="Linear Elasticity" />
+    <Parameter name="Null Space Type" type="string" value="Laplace" />
+    <!-- <Parameter name="Null Space Type" type="string" value="Linear Elasticity" /> -->
 
     <ParameterList name="Blocks"> <!-- Probably so that different types of coarse space can be
       applied to each block -->

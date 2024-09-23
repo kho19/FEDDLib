@@ -41,9 +41,6 @@
 
 namespace FROSch {
 
-// TODO: kho how to pass in a block system? might need to construct a monolithic matrix out of the block for this? The
-// initially passed in matrix is used to build the coarse spaces
-
 // The communicator for this object is taken from the matrix passed to IPOUHarmonicCoarseOperator
 template <class SC, class LO, class GO, class NO>
 CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(NonLinearProblemPtrFEDD problem,
@@ -260,12 +257,12 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             BuildDofMaps(repeatedDofsMapVec[i], dofsPerNodeVec[i], dofOrdering, repeatedNodesMapVec[i], dofsMapsVec[i], offset);
             offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex()+1;
 
-            FEDD::logGreen("dofsMapsVec in block " + std::to_string(i), this->MpiComm_);
-            auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-            for (int j = 0; j < dofsPerNodeVec[i]; j++) {
-                FEDD::logGreen("dofsMaps for dof " + std::to_string(j), this->MpiComm_);
-                dofsMapsVec[i][j]->describe(*out, VERB_EXTREME);
-            }
+            // FEDD::logGreen("dofsMapsVec in block " + std::to_string(i), this->MpiComm_);
+            // auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
+            // for (int j = 0; j < dofsPerNodeVec[i]; j++) {
+            //     FEDD::logGreen("dofsMaps for dof " + std::to_string(j), this->MpiComm_);
+            //     dofsMapsVec[i][j]->describe(*out, VERB_EXTREME);
+            // }
             // Build nodeList
             auto nodeListFEDD = mesh->getPointsRepeated();
             // TODO: kho do I need to build the nodeList in a different way?

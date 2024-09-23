@@ -26,7 +26,8 @@ using namespace std;
 
 void initialValue2D(double *x, double *res, double *parameters) { res[0] = 1;res[1] = 1; }
 // Required for setting the Dirichlet BC on the ghost points to the current global solution in nonlinear Schwarz
-void currentSolutionDirichlet(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
+void currentSolutionDirichlet2D(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; res[1] = x[1];}
+void currentSolutionDirichlet1D(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
 
 void zeroDirichlet(double *x, double *res, double t, const double *parameters) {
 
@@ -206,8 +207,8 @@ int main(int argc, char *argv[]) {
     }
     // The current global solution must be set as the Dirichlet BC on the ghost nodes for nonlinear Schwarz solver to
     // correctly solve on the subdomains
-    bcFactory->addBC(currentSolutionDirichlet, -99, 0, domainVelocity, "Dirichlet", dim);
-    bcFactory->addBC(currentSolutionDirichlet, -99, 1, domainPressure, "Dirichlet", 1);
+    bcFactory->addBC(currentSolutionDirichlet2D, -99, 0, domainVelocity, "Dirichlet", dim);
+    bcFactory->addBC(currentSolutionDirichlet1D, -99, 1, domainPressure, "Dirichlet", 1);
     NavierStokes<SC, LO, GO, NO> navierStokes(domainVelocity, discVelocity, domainPressure, discPressure,
                                               parameterListAll);
 

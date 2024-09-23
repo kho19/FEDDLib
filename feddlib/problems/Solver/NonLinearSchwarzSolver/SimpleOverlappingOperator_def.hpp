@@ -104,8 +104,8 @@ template <class SC, class LO, class GO, class NO> int SimpleOverlappingOperator<
     return 0;
 }
 
-// Need to implement the apply method since each matrix in overlapping subdomain is different i.e.
-// overlappingOperator apply method cannot be used
+// NOTE: if FROSch_OverlappingOperator->apply() did not expect a uniquely distributed input, it could be used here.
+// Instead we need to use this modified version.
 template <class SC, class LO, class GO, class NO>
 void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMultiVector &y, ETransp mode, SC alpha,
                                                       SC beta) const {
@@ -127,7 +127,7 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
     //  Apply DF(u_i)
     this->OverlappingMatrix_->apply(*x_Ghosts_, *x_Ghosts_, mode, ST::one(), ST::zero());
     // Set solution on ghost points to zero so that column entries in (R_iDF(u_i)P_i)^-1 corresponding to ghost nodes do
-    // not affect the solution
+    // not affect the solution. This is equivalent to applying the restriction opertor R_i
     int blockOffset = 0;
     for (int i = 0; i < bcFlagOverlappingGhostsVec_.size(); i++) {
         auto bcFlagOverlappingGhosts = bcFlagOverlappingGhostsVec_.at(i);
@@ -143,7 +143,6 @@ void SimpleOverlappingOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMu
         blockOffset += numNodesBlock * dofsPerNode;
     }
     // Apply local solution
-    // NOTE: if FROSch_OverlappingOperator->apply() did not expect a uniquely distributed input, it could be used here
     if (y_Ghosts_.is_null()) {
         y_Ghosts_ =
             Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->OverlappingMatrix_->getRowMap(), x.getNumVectors());

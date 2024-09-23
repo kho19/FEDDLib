@@ -19,7 +19,6 @@ using namespace std;
 // TODO: kho:
 //  - Implement construction of surfaces in MeshPartitioner on the overlapping subdomains. Without this surface forces
 //  cannot be used
-//  - Modify coarse operator so that it works with vector valued systems
 
 // Apply a force in y direction if the boundary element flag is three
 // parameters contains [time, force, degree (unused), flag]

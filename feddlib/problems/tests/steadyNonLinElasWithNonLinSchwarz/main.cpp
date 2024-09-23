@@ -11,8 +11,6 @@
 #include <Teuchos_StackedTimer.hpp>
 #include <Xpetra_DefaultPlatform.hpp>
 
-// TODO: remove lambda and add density of the material
-
 void zeroDirichlet2D(double *x, double *res, double t, const double *parameters) {
     res[0] = 0.;
     res[1] = 0.;

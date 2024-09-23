@@ -609,7 +609,6 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
     auto useASPEN = problem.getParameterList()->get("Use ASPEN", true);
 
-    // TODO: kho make these pointers to const block maps?
     auto mapOverlapping = Teuchos::rcp(new BlockMap_Type(0));
     auto mapOverlappingGhosts = Teuchos::rcp(new BlockMap_Type(0));
     auto mapUnique = Teuchos::rcp(new BlockMap_Type(0));
@@ -659,7 +658,6 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
     int numLevels = problem.getParameterList()->get("Levels", 1);
     TEUCHOS_TEST_FOR_EXCEPTION(numLevels > 2, std::runtime_error, "More than two levels are not implemented");
-    // TODO: kho Need to modify the coarse operator
     auto coarseOperator = Teuchos::rcp(new FROSch::CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>(
         Teuchos::rcpFromRef(problem), sublist(problem.getParameterList(), "Coarse Nonlinear Schwarz")));
     if (numLevels == 2) {
@@ -690,7 +688,7 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto g = Teuchos::rcp(new MultiVector_Type(mapUniqueMerged, 1));
     g->putScalar(0.);
     // deltaSolution needs to be a block multivector so it can update problem->solution_
-    auto deltaSolution = Teuchos::rcp(new BlockMultiVector_Type(1));
+    auto deltaSolution = Teuchos::rcp(new BlockMultiVector_Type(domainVec.size()));
     for (int i = 0; i < domainVec.size(); i++) {
         auto deltaSolutionBlock = Teuchos::rcp(new MultiVector_Type(mapUnique->getBlock(i), 1));
         deltaSolutionBlock->putScalar(0.);
