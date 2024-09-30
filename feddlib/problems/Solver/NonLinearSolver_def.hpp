@@ -664,7 +664,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         coarseOperator->initialize();
         coarseOperator->compute();
         // For plotting the coarse basis functions
-        /* coarseOperator->exportCoarseBasis(); */
+        
+    if (problem.getParameterList()->sublist("Exporter").get("Export coarse functions", false)){
+        coarseOperator->exportCoarseBasis();
+    }
         rhsCombineOperator->addOperator(
             Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
     }

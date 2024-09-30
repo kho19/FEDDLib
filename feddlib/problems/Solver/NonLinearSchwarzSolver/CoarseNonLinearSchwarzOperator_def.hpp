@@ -215,7 +215,8 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         // The distribution of dofs. One map for each block. This gets built heuristically in
         // TwoLevelBlockPreconditioner using the unique distribution if not provided but only for one block.
         auto repeatedDofsMapVec = Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::Map<LO, GO, NO>>>(domainVec.size());
-        // The distribution of nodes. This gets built from the distribution of dofs in TwoLevelBlockPreconditioner.
+        // The distribution of nodes. This gets built from the distribution of dofs in TwoLevelBlockPreconditioner. Here
+        // we already know this distribution, so we just ensure the built one is the same as the existing one.
         auto repeatedNodesMapVec = Teuchos::ArrayRCP<Teuchos::RCP<const Xpetra::Map<LO, GO, NO>>>(domainVec.size());
         // The distribution of dofs, but this is a 2D vector. For each block there is a vector that contains a map entry
         // for each dof, unlike repeatedDofsMapVec.
@@ -252,10 +253,11 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             // Initialize the underlying IPOUHarmonicCoarseOperator object
             // dofs of a node are lumped together
             int dofOrdering = 0;
-            // TODO: kho repeatedNodesMap gets set by this function. Try passing in a dummy version and ensuring it is
-            // the same as the existing repeatedNodesMap
-            BuildDofMaps(repeatedDofsMapVec[i], dofsPerNodeVec[i], dofOrdering, repeatedNodesMapVec[i], dofsMapsVec[i], offset);
-            offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex()+1;
+            Teuchos::RCP<const Xpetra::Map<LO, GO, NO>> dummyRepeatedNodesMap;
+            BuildDofMaps(repeatedDofsMapVec[i], dofsPerNodeVec[i], dofOrdering, dummyRepeatedNodesMap, dofsMapsVec[i],
+                         offset);
+            FROSCH_ASSERT(repeatedNodesMapVec[i]->isSameAs(*dummyRepeatedNodesMap), "Error with the repeatedNodesMap.");
+            offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex() + 1;
 
             // FEDD::logGreen("dofsMapsVec in block " + std::to_string(i), this->MpiComm_);
             // auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
@@ -503,7 +505,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::exportCoarseBasis() {
     Teuchos::RCP<FEDD::MultiVector<SC, LO, GO, NO>> phiMV;
     phiMatrix->toMV(phiMV);
 
-    int numberOfBlocks = pList->get("Number of blocks", 1);
+    int numberOfBlocks = pLCoarse->get("Number of blocks", 1);
     std::vector<Teuchos::RCP<const FEDD::Map<LO, GO, NO>>> blockMaps(numberOfBlocks);
     // Build corresponding map object
     for (UN i = 0; i < numberOfBlocks; i++) {
@@ -535,43 +537,44 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::exportCoarseBasis() {
 
     // Export the basis block by block
     for (int i = 0; i < phiBlockMV->size(); i++) {
-        /* bool exportThisBlock = */
-        /*     !pList->sublist("Exporter").get("Exclude coarse functions block" + std::to_string(i + 1), false); */
-        /**/
-        /* if (exportThisBlock) { */
-        Teuchos::RCP<FEDD::ExporterParaView<SC, LO, GO, NO>> exporter(new FEDD::ExporterParaView<SC, LO, GO, NO>());
+        bool exportThisBlock =
+            !pList->sublist("Exporter").get("Exclude coarse functions block" + std::to_string(i + 1), false);
 
-        Teuchos::RCP<const FEDD::Domain<SC, LO, GO, NO>> domain;
-        if (!problem_.is_null())
+        if (exportThisBlock) {
+            Teuchos::RCP<FEDD::ExporterParaView<SC, LO, GO, NO>> exporter(new FEDD::ExporterParaView<SC, LO, GO, NO>());
 
-            domain = problem_->getDomain(i);
-        int dofsPerNode = domain->getDimension();
-        std::string fileName = "phi";
-
-        Teuchos::RCP<FEDD::Mesh<SC, LO, GO, NO>> meshNonConst =
-            Teuchos::rcp_const_cast<FEDD::Mesh<SC, LO, GO, NO>>(domain->getMesh());
-        exporter->setup(fileName, meshNonConst, domain->getFEType());
-
-        for (int j = 0; j < phiBlockMV->getNumVectors(); j++) {
-
-            Teuchos::RCP<const FEDD::MultiVector<SC, LO, GO, NO>> exportPhi = phiBlockMV->getBlock(i)->getVector(j);
-
-            std::string varName = fileName + std::to_string(j);
-            if (pLCoarse->get("DofsPerNode" + std::to_string(i + 1), 1) > 1) {
-                exporter->addVariable(exportPhi, varName, "Vector", dofsPerNode, domain->getMapUnique());
-            } else {
-                exporter->addVariable(exportPhi, varName, "Scalar", 1, domain->getMapUnique());
+            Teuchos::RCP<const FEDD::Domain<SC, LO, GO, NO>> domain;
+            if (!problem_.is_null()) {
+                domain = problem_->getDomain(i);
             }
-        }
-        Teuchos::RCP<const FEDD::MultiVector<SC, LO, GO, NO>> exportSumPhi = phiSumBlockMV->getBlock(i);
-        std::string varName = fileName + "Sum";
-        if (pLCoarse->get("DofsPerNode" + std::to_string(i + 1), 1) > 1)
-            exporter->addVariable(exportSumPhi, varName, "Vector", dofsPerNode, domain->getMapUnique());
-        else
-            exporter->addVariable(exportSumPhi, varName, "Scalar", 1, domain->getMapUnique());
+            int dofsPerNode = domain->getDimension();
+            std::string fileName =
+                pList->sublist("Exporter").get("Name coarse functions block" + std::to_string(i + 1), "phi");
 
-        exporter->save(0.0);
-        /* } */
+            Teuchos::RCP<FEDD::Mesh<SC, LO, GO, NO>> meshNonConst =
+                Teuchos::rcp_const_cast<FEDD::Mesh<SC, LO, GO, NO>>(domain->getMesh());
+            exporter->setup(fileName, meshNonConst, domain->getFEType());
+
+            for (int j = 0; j < phiBlockMV->getNumVectors(); j++) {
+
+                Teuchos::RCP<const FEDD::MultiVector<SC, LO, GO, NO>> exportPhi = phiBlockMV->getBlock(i)->getVector(j);
+
+                std::string varName = fileName + std::to_string(j);
+                if (pLCoarse->get("DofsPerNode" + std::to_string(i + 1), 1) > 1) {
+                    exporter->addVariable(exportPhi, varName, "Vector", dofsPerNode, domain->getMapUnique());
+                } else {
+                    exporter->addVariable(exportPhi, varName, "Scalar", 1, domain->getMapUnique());
+                }
+            }
+            Teuchos::RCP<const FEDD::MultiVector<SC, LO, GO, NO>> exportSumPhi = phiSumBlockMV->getBlock(i);
+            std::string varName = fileName + "Sum";
+            if (pLCoarse->get("DofsPerNode" + std::to_string(i + 1), 1) > 1) {
+                exporter->addVariable(exportSumPhi, varName, "Vector", dofsPerNode, domain->getMapUnique());
+            } else {
+                exporter->addVariable(exportSumPhi, varName, "Scalar", 1, domain->getMapUnique());
+            }
+            exporter->save(0.0);
+        }
     }
 }
 

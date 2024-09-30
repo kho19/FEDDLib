@@ -67,9 +67,9 @@ public:
     NavierStokes( const DomainConstPtr_Type &domainVelocity, std::string FETypeVelocity, const DomainConstPtr_Type &domainPressure, std::string FETypePressure, ParameterListPtr_Type parameterList );
     //@}
 
-    virtual void info();
+    void info() override;
 
-    virtual void assemble( std::string type = "" ) const;
+    void assemble( std::string type = "" ) const override;
     
     void assembleConstantMatrices() const;
     
@@ -77,22 +77,22 @@ public:
     
     void reAssemble( std::string type ) const;
     
-    virtual void reAssemble( BlockMultiVectorPtr_Type previousSolution ) const{};
+    void reAssemble( BlockMultiVectorPtr_Type previousSolution ) const override{};
     
     void reAssembleFSI(std::string type, MultiVectorPtr_Type u_minus_w, MatrixPtr_Type P) const;
     
     virtual void reAssemble(MatrixPtr_Type& massmatrix, std::string type ) const;
 
-    virtual void reAssembleExtrapolation(BlockMultiVectorPtrArray_Type previousSolutions);
+    void reAssembleExtrapolation(BlockMultiVectorPtrArray_Type previousSolutions) override;
 
-    virtual void calculateNonLinResidualVec(std::string type="standard", double time=0.) const; //standard or reverse
+    void calculateNonLinResidualVec(std::string type="standard", double time=0.) const override; //standard or reverse
     
     void calculateNonLinResidualVecWithMeshVelo(std::string type, double time, MultiVectorPtr_Type u_minus_w, MatrixPtr_Type P) const;
 //    virtual int ComputeDragLift(vec_dbl_ptr_Type &values);
 
-    virtual void getValuesOfInterest( vec_dbl_Type& values ){};
+    void getValuesOfInterest( vec_dbl_Type& values ) override {};
     
-    virtual void computeValuesOfInterestAndExport() {};
+    void computeValuesOfInterestAndExport() override {};
 
 //    virtual void assembleExternal( std::string type ){};
     /*####################*/
@@ -106,20 +106,20 @@ private:
 
 public:
 
-    Teuchos::RCP< Thyra::LinearOpBase<SC> > create_W_op() const;
+    Teuchos::RCP< Thyra::LinearOpBase<SC> > create_W_op() const override;
     Teuchos::RCP< Thyra::LinearOpBase<SC> > create_W_op_Monolithic() const;
 #ifdef FEDD_HAVE_TEKO
     Teuchos::RCP< Thyra::LinearOpBase<SC> > create_W_op_Block() const;
 #endif
-    Teuchos::RCP<Thyra::PreconditionerBase<SC> > create_W_prec() const;
+    Teuchos::RCP<Thyra::PreconditionerBase<SC> > create_W_prec() const override;
 
     void reInitSpecificProblemVectors(const MapConstPtr_Type newMap) override;
 private:
 
-    virtual void evalModelImpl(
+    void evalModelImpl(
                        const ::Thyra::ModelEvaluatorBase::InArgs<SC> &inArgs,
                        const ::Thyra::ModelEvaluatorBase::OutArgs<SC> &outArgs
-                       ) const;
+                       ) const override;
 
     void evalModelImplMonolithic(const ::Thyra::ModelEvaluatorBase::InArgs<SC> &inArgs,
                                  const ::Thyra::ModelEvaluatorBase::OutArgs<SC> &outArgs) const;

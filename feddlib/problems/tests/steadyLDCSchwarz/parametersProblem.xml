@@ -31,18 +31,13 @@
         <Parameter name="Name coarse functions block1" type="string" value="phiU"/>
         <Parameter name="Exclude coarse functions block1" type="bool" value="false"/>
 
-        <Parameter name="Name coarse functions block1" type="string" value="phiP"/>
+        <Parameter name="Name coarse functions block2" type="string" value="phiP"/>
         <Parameter name="Exclude coarse functions block1" type="bool" value="false"/>
 
     </ParameterList>
 
     <ParameterList name="General">
-        <Parameter name="Mpi Ranks Coarse" type="int" value="0"/>
         <Parameter name="Linearization" type="string" value="NonLinearSchwarz"/> <!-- FixedPoint, Newton, NOX-->
         <Parameter name="ParaViewExport" type="bool" value="true"/>
-        <Parameter name="ParaViewCoarse" type="bool" value="false"/>
-        <Parameter name="ParaViewCoarseSum" type="bool" value="false"/>
-        <Parameter name="ParaView export subdomain" type="bool" value="false"/>
-        <Parameter name="Preconditioner Method" type="string" value="Monolithic"/><!-- Monolithic, Teko -->
     </ParameterList>
 </ParameterList>
