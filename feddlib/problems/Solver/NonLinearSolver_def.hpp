@@ -1,6 +1,8 @@
 #ifndef NONLINEARSOLVER_DEF_hpp
 #define NONLINEARSOLVER_DEF_hpp
 #include "NonLinearSolver_decl.hpp"
+#include "feddlib/core/LinearAlgebra/Map_decl.hpp"
+#include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/CoarseNonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/problems/Solver/NonLinearSchwarzSolver/H1Operator_decl.hpp"
@@ -630,6 +632,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto mapUniqueMerged = mapUnique->getMergedMap();
 
     // The coarse space is built using this Jacobian
+    // Calling these first two lines does have an affect on the Jacobian that is used to build the coarse space.
+    // Depending on the particular problem implementation a different set of these calls to assemble should be used.
+    problem.assemble();
+    problem.assemble("FixedPoint");
     problem.assemble("Newton");
     problem.setBoundariesSystem();
 
@@ -663,11 +669,10 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     if (numLevels == 2) {
         coarseOperator->initialize();
         coarseOperator->compute();
-        // For plotting the coarse basis functions
-        
-    if (problem.getParameterList()->sublist("Exporter").get("Export coarse functions", false)){
-        coarseOperator->exportCoarseBasis();
-    }
+
+        if (problem.getParameterList()->sublist("Exporter").get("Export coarse functions", false)) {
+            coarseOperator->exportCoarseBasis();
+        }
         rhsCombineOperator->addOperator(
             Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
     }

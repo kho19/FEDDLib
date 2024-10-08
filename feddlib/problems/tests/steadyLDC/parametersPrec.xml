@@ -13,19 +13,19 @@
                 <Parameter name="FROSch Preconditioner Type" type="string" value="TwoLevelBlockPreconditioner"/>
 
                 <Parameter name="Recycling" type="bool" value="true"/>
-                <Parameter name="DofsPerNode1" type="int" value="1"/>
+                <Parameter name="DofsPerNode1" type="int" value="2"/>
                 <Parameter name="DofsPerNode2" type="int" value="1"/>
                 <Parameter name="DofOrdering1" type="string" value="NodeWise"/>
                 <Parameter name="DofOrdering2" type="string" value="NodeWise"/>
                 
-                <Parameter name="Overlap" type="int" value="5"/>
+                <Parameter name="Overlap" type="int" value="2"/>
                 <Parameter name="TwoLevel" type="bool" value="true"/>
                 
                 <Parameter name="Level Combination" type="string" value="Additive"/><!--Multiplicative,Additive-->
                 <Parameter name="OverlappingOperator Type" type="string" value="AlgebraicOverlappingOperator"/>
                 
                 <Parameter name="CoarseOperator Type" type="string" value="RGDSWCoarseOperator"/><!--GDSWCoarseOperator,IPOUHarmonicCoarseOperator-->
-                <Parameter name="Null Space Type" type="string"   value="Stokes"/>
+                <Parameter name="Null Space Type" type="string"   value="Laplace"/>
 
                 <ParameterList name="AlgebraicOverlappingOperator">
                     <Parameter name="Reuse: Symbolic Factorization" type="bool" value="false"/>
@@ -63,8 +63,8 @@
                         <ParameterList name="1">
                             <Parameter name="Use For Coarse Space" type="bool" value="true"/>
                             <ParameterList name="InterfacePartitionOfUnity">
-                                <Parameter name="Type" type="string" value="GDSW"/>
-                                <ParameterList name="GDSW">
+                                <Parameter name="Type" type="string" value="RGDSW"/>
+                                <ParameterList name="RGDSW">
                                     <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph"/><!-- CreateOneToOneMap, CrsGraph, CrsMatrix -->
 
                                     <Parameter name="Type" type="string" value="Full"/>
@@ -81,8 +81,8 @@
                         <ParameterList name="2">
                             <Parameter name="Use For Coarse Space"                  type="bool"     value="true"/>
                             <ParameterList name="InterfacePartitionOfUnity">
-                                <Parameter name="Type" type="string" value="GDSW"/>
-                                <ParameterList name="GDSW">
+                                <Parameter name="Type" type="string" value="RGDSW"/>
+                                <ParameterList name="RGDSW">
                                     <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph"/>
                                     
                                     <Parameter name="Type" type="string" value="Full"/>

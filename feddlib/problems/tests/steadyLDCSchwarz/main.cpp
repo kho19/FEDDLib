@@ -24,7 +24,8 @@
 
 using namespace std;
 
-void initialValue2D(double *x, double *res, double *parameters) { res[0] = 1;res[1] = 1; }
+void initialValue2D(double *x, double *res, double *parameters) {res[0] = 0; res[1] = 0;}
+// void initialValue2D(double *x, double *res, double *parameters) { res[0] = x[0] * x[1] * (1 - x[0]) * (1 - x[1]); }
 // Required for setting the Dirichlet BC on the ghost points to the current global solution in nonlinear Schwarz
 void currentSolutionDirichlet2D(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; res[1] = x[1];}
 void currentSolutionDirichlet1D(double *x, double *res, double t, const double *parameters) { res[0] = x[0]; }
@@ -222,11 +223,12 @@ int main(int argc, char *argv[]) {
     navierStokes.addRhsFunction(dummyFunc);
 
     navierStokes.initializeProblem();
+    navierStokes.initSolutionWithFunction(initialValue2D, 0, std::vector<double>{0});
+    navierStokes.initSolutionWithFunction(initialValue2D, 1, std::vector<double>{0});
     navierStokes.assemble();
 
     navierStokes.setBoundariesRHS();
 
-    // navierStokes.getSystem()->getBlock(1,1)->print();
     std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "NonlinearSchwarz");
     NonLinearSolver<SC, LO, GO, NO> nlSolver(nlSolverType);
     nlSolver.solve(navierStokes);

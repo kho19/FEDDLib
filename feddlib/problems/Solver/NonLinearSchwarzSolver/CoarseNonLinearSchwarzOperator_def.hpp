@@ -384,7 +384,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         if (nlIts == 0) {
             if (absResidual < absNewtonTol_) {
                 std::cout
-                    << "==> Exiting local Newton solver immediately: absolute residual is already below the tolerance."
+                    << "==> Exiting coarse Newton solver immediately: absolute residual is already below the tolerance."
                     << std::endl;
                 break; // We are already done
             } else {
@@ -441,7 +441,8 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
                                    "step. Still we cancel here.");
     }
 
-    y->getBlockNonConst(0)->update(alpha, problem_->getSolution()->getBlock(0), beta);
+    // y->getBlockNonConst(0)->update(alpha, problem_->getSolution()->getBlock(0), beta);
+    y->update(alpha, problem_->getSolution(), beta);
     // Restore problem state
     problem_->initializeProblem();
     problem_->system_ = systemTmp_;
