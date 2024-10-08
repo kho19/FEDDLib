@@ -1,6 +1,8 @@
 #ifndef PROBLEM_DEF_hpp
 #define PROBLEM_DEF_hpp
 #include "Problem_decl.hpp"
+#include <string>
+#include <vector>
 
 /*!
  Definition of Problem
@@ -556,12 +558,15 @@ namespace FEDD
         TEUCHOS_TEST_FOR_EXCEPTION(solution_.is_null(), std::runtime_error,
                                    "Initial value cannot be set before a call to initializeVectors()");
         auto solution = solution_->getBlockNonConst(block);
-        SC result = 0;
+        auto dofsPerNode = dofsPerNode_vec_.at(block);
+        std::vector<SC> result(dofsPerNode);
         for (auto i = 0; i < solution->getNumVectors(); i++) {
-            for (auto j = 0; j < solution->getLocalLength(); j++) {
+            for (auto j = 0; j < domainPtr_vec_.at(block)->getMesh()->getPointsUnique()->size(); j++) {
                 auto x = domainPtr_vec_.at(block)->getMesh()->getPointsUnique()->at(j);
-                f(x.data(), &result, params.data());
-                solution->replaceLocalValue(j, i, result);
+                f(x.data(), result.data(), params.data());
+                for (auto k = 0; k < dofsPerNode; k++) {
+                    solution->replaceLocalValue(dofsPerNode* j + k, i, result.at(k));
+                }
             }
         }
     }
