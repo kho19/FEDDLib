@@ -118,8 +118,9 @@ int main(int argc, char *argv[]) {
     comm->barrier();
     comm->barrier();
 
-    // Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Steady Navier-Stokes", true));
-    // TimeMonitor::setStackedTimer(stackedTimer);
+    Teuchos::RCP<StackedTimer> stackedTimer = rcp(new StackedTimer("Nonlinear Schwarz solver", true));
+    TimeMonitor::setStackedTimer(stackedTimer);
+
     ParameterListPtr_Type parameterListProblem = Teuchos::getParametersFromXmlFile(xmlProblemFile);
 
     ParameterListPtr_Type parameterListSolver = Teuchos::getParametersFromXmlFile(xmlSchwarzSolverFile);
@@ -153,13 +154,8 @@ int main(int argc, char *argv[]) {
     int numProcsCoarseSolve = parameterListProblem->sublist("General").get("Mpi Ranks Coarse", 0);
     int size = comm->getSize() - numProcsCoarseSolve;
 
-    Teuchos::RCP<Teuchos::Time> totalTime(Teuchos::TimeMonitor::getNewCounter("main: Total Time"));
-    Teuchos::RCP<Teuchos::Time> buildMesh(Teuchos::TimeMonitor::getNewCounter("main: Build Mesh"));
-    Teuchos::RCP<Teuchos::Time> solveTime(Teuchos::TimeMonitor::getNewCounter("main: Solve problem time"));
     DomainPtr_Type domainPressure;
     DomainPtr_Type domainVelocity;
-    Teuchos::TimeMonitor totalTimeMonitor(*totalTime);
-    Teuchos::TimeMonitor buildMeshMonitor(*buildMesh);
     if (verbose) {
         cout << "-- Building Mesh ..." << flush;
     }
@@ -217,8 +213,6 @@ int main(int argc, char *argv[]) {
     domainPressure->info();
     navierStokes.info();
 
-    Teuchos::TimeMonitor solveTimeMonitor(*solveTime);
-
     navierStokes.addBoundaries(bcFactory);
     navierStokes.addRhsFunction(dummyFunc);
 
@@ -231,14 +225,17 @@ int main(int argc, char *argv[]) {
 
     std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "NonlinearSchwarz");
     NonLinearSolver<SC, LO, GO, NO> nlSolver(nlSolverType);
+    FEDD_TIMER_START(SolveTimer, " - Schwarz - global solve");
     nlSolver.solve(navierStokes);
+    FEDD_TIMER_STOP(SolveTimer);
+
     comm->barrier();
 
-    Teuchos::TimeMonitor::report(cout);
-    // stackedTimer->stop("Steady Navier-Stokes");
-    // StackedTimer::OutputOptions options;
-    // options.output_fraction = options.output_histogram = options.output_minmax = true;
-    // stackedTimer->report((std::cout), comm, options);
+    Teuchos::TimeMonitor::report(cout, "FEDD");
+    stackedTimer->stop("Nonlinear Schwarz solver");
+    StackedTimer::OutputOptions options;
+    options.output_fraction = options.output_histogram = options.output_minmax = true;
+    stackedTimer->report((std::cout), comm, options);
 
     if (parameterListAll->sublist("General").get("ParaViewExport", false)) {
         Teuchos::RCP<ExporterParaView<SC, LO, GO, NO>> exParaVelocity(new ExporterParaView<SC, LO, GO, NO>());
