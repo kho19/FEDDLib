@@ -476,7 +476,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const XMultiVector &x, XMul
     feddY->split();
     apply(feddX, feddY, alpha, beta);
     feddY->merge();
-    y.update(alpha, *feddY->getMergedVector()->getXpetraMultiVector(), beta);
+    y.update(ST::one(), *feddY->getMergedVector()->getXpetraMultiVector(), ST::zero());
 }
 
 template <class SC, class LO, class GO, class NO>
