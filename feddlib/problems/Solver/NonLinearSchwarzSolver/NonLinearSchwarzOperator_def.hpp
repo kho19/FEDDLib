@@ -324,14 +324,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         absResidual = problem_->calculateResidualNorm();
 
         if (nlIts == 0) {
-            if (absResidual < absNewtonTol_) {
-                FEDD::logGreen(
-                    "Exiting local Newton solver immediately: absolute residual is already below the tolerance.",
-                    this->MpiComm_);
-                break; // We are already done
-            } else {
-                residual0 = absResidual;
-            }
+            residual0 = absResidual;
         }
 
         relResidual = absResidual / residual0;

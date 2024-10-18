@@ -66,11 +66,6 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(N
         TEUCHOS_ASSERT(!domainPtr->getMapRepeated().is_null());
         TEUCHOS_ASSERT(!domainPtr->getDualGraph().is_null());
     }
-
-    // Initialize members that cannot be null after construction
-    /* x_->addBlock(Teuchos::rcp(new FEDD::MultiVector<SC, LO, GO, NO>(domainPtr_vec.at(0)->getMapOverlappingGhosts(),
-     * 1)), */
-    /*              0); */
 }
 
 template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::initialize() {
@@ -140,30 +135,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         auto dirichletBoundaryDofsVec = Teuchos::rcp(new std::vector<GO>(0));
         int block = 0;
         int loc = 0;
-        auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-        /* FEDD::logGreen("repeatedNodesmap", this->MpiComm_); */
-        /* repeatedNodesMap->describe(*out, VERB_EXTREME); */
-        /* FEDD::logGreen("bcFlagRep_", this->MpiComm_); */
-        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 1); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 2); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* FEDD::logVec(*mesh->bcFlagRep_, this->MpiComm_, 3); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
         for (auto i = 0; i < repeatedNodesMap->getLocalNumElements(); i++) {
             auto flag = mesh->bcFlagRep_->at(i);
             // The vector vecFlag_ contains the flags that have been set with addBC().
@@ -175,28 +146,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
                 }
             }
         }
-        /* FEDD::logGreen("dirichletBoundaryDofsVec", this->MpiComm_); */
-        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 1); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 2); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* FEDD::logVec(*dirichletBoundaryDofsVec, this->MpiComm_, 3); */
-        /* std::cout << std::flush; */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-        /* this->MpiComm_->barrier(); */
-
         // Convert std::vector to ArrayRCP
         auto dirichletBoundaryDofs = arcp<GO>(dirichletBoundaryDofsVec);
         // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the coarse
@@ -259,12 +208,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             FROSCH_ASSERT(repeatedNodesMapVec[i]->isSameAs(*dummyRepeatedNodesMap), "Error with the repeatedNodesMap.");
             offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex() + 1;
 
-            // FEDD::logGreen("dofsMapsVec in block " + std::to_string(i), this->MpiComm_);
-            // auto out = Teuchos::VerboseObjectBase::getDefaultOStream();
-            // for (int j = 0; j < dofsPerNodeVec[i]; j++) {
-            //     FEDD::logGreen("dofsMaps for dof " + std::to_string(j), this->MpiComm_);
-            //     dofsMapsVec[i][j]->describe(*out, VERB_EXTREME);
-            // }
             // Build nodeList
             auto nodeListFEDD = mesh->getPointsRepeated();
             // TODO: kho do I need to build the nodeList in a different way?
@@ -382,12 +325,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         absResidual = residualArray[0];
 
         if (nlIts == 0) {
-            if (absResidual < absNewtonTol_) {
-                FEDD::logGreen("Exiting coarse Newton solver immediately: absolute residual is already below the tolerance.", this->MpiComm_);
-                break; // We are already done
-            } else {
-                residual0 = absResidual;
-            }
+            residual0 = absResidual;
         }
 
         relResidual = absResidual / residual0;
