@@ -4047,6 +4047,8 @@ void FE<SC,LO,GO,NO>::assemblyDivAndDivTFast( int dim,
     
 }
 
+// Assemble the Bochev-Dohrmann stability term for P1-P1 FE's as described in "A stabilized finite element method for
+// the Stokes problem based on polynomial pressure projections"
 template <class SC, class LO, class GO, class NO>
 void FE<SC,LO,GO,NO>::assemblyBDStabilization(int dim,
                                               std::string FEType,
@@ -4096,14 +4098,18 @@ void FE<SC,LO,GO,NO>::assemblyBDStabilization(int dim,
         detB = B.computeDet( );
         absDetB = std::fabs(detB);
 
+        // Iterate over basis functions
         for (UN i=0; i < phi->at(0).size(); i++) {
             Teuchos::Array<SC> value( phi->at(0).size(), 0. );
             Teuchos::Array<GO> indices( phi->at(0).size(), 0 );
+            // For each basis function there is a row entry in C
             for (UN j=0; j < value.size(); j++) {
+                // Iterate over quadrature points
                 for (UN w=0; w<phi->size(); w++) {
                     value[j] += weights->at(w) * (*phi)[w][i] * (*phi)[w][j];
                 }
                 value[j] *= absDetB;
+                // This is the term - E_e^T D_d^{-1} E_e from the paper (see above) for P1-P1 elements
                 value[j] -= refElementSize * absDetB * refElementScale;
 
                 indices[j] = map->getGlobalElement( elements->getElement(T).getNode(j) );
@@ -4118,8 +4124,6 @@ void FE<SC,LO,GO,NO>::assemblyBDStabilization(int dim,
     if (callFillComplete)
         A->fillComplete();
 }
-
-
 
 template <class SC, class LO, class GO, class NO>
 void FE<SC,LO,GO,NO>::assemblyLaplaceXDim(int dim,

@@ -12,9 +12,9 @@ TRIBITS_ADD_TEST(
 
 TRIBITS_COPY_FILES_TO_BINARY_DIR(data_nonLinSchwarz
 	SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-	SOURCE_FILES parametersPrec.xml  parametersProblem.xml parametersSolver.xml
+  SOURCE_FILES parametersProblem.xml parametersSolverNonLinSchwarz.xml
 	DEST_DIR ${CMAKE_CURRENT_BINARY_DIR}
-	DEST_FILES parametersPrec.xml  parametersProblem.xml parametersSolver.xml
+  DEST_FILES parametersProblem.xml parametersSolverNonLinSchwarz.xml
   EXEDEPS nonLinSchwarz
 )
 

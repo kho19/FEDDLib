@@ -219,6 +219,8 @@ public:
     void setVecExternalSolAtIndex(int index, MultiVectorConstPtr_Type externalSol) const;
     vec_int_Type getVecFlag() const;
     std::vector<DomainPtr_Type> getVecDomain() const;
+    // Removes the last BC entry added with addBC()
+    void removeBC();
 
   private:
     std::vector<BC_func_Type> vecBC_func_;

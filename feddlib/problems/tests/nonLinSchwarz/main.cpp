@@ -80,9 +80,7 @@ int main(int argc, char *argv[]) {
 
     string xmlProblemFile = "parametersProblem.xml";
     myCLP.setOption("problemfile", &xmlProblemFile, ".xml file with Inputparameters.");
-    string xmlPrecFile = "parametersPrec.xml";
-    myCLP.setOption("precfile", &xmlPrecFile, ".xml file with Inputparameters.");
-    string xmlSolverFile = "parametersSolver.xml";
+    string xmlSolverFile = "parametersSolverNonLinSchwarz.xml";
     myCLP.setOption("solverfile", &xmlSolverFile, ".xml file with Inputparameters.");
 
     myCLP.recogniseAllOptions(true);
@@ -108,11 +106,9 @@ int main(int argc, char *argv[]) {
     }
 
     ParameterListPtr_Type parameterListProblem = Teuchos::getParametersFromXmlFile(xmlProblemFile);
-    ParameterListPtr_Type parameterListPrec = Teuchos::getParametersFromXmlFile(xmlPrecFile);
     ParameterListPtr_Type parameterListSolver = Teuchos::getParametersFromXmlFile(xmlSolverFile);
 
     ParameterListPtr_Type parameterListAll(new Teuchos::ParameterList(*parameterListProblem));
-    parameterListAll->setParameters(*parameterListPrec);
     parameterListAll->setParameters(*parameterListSolver);
 
     int dim = parameterListProblem->sublist("Parameter").get("Dimension", 2);

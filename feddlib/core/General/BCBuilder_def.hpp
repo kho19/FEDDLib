@@ -741,6 +741,20 @@ template <class SC, class LO, class GO, class NO>
 std::vector<typename BCBuilder<SC, LO, GO, NO>::DomainPtr_Type> BCBuilder<SC, LO, GO, NO>::getVecDomain() const {
     return vecDomain_;
 }
+
+template <class SC, class LO, class GO, class NO> void BCBuilder<SC, LO, GO, NO>::removeBC() {
+    // Assume that all vectors have the same length so don't check them all
+    if (!vecBC_func_.empty()) {
+        vecBC_func_.pop_back();
+        vecFlag_.pop_back();
+        vecBlockID_.pop_back();
+        vecDomain_.pop_back();
+        vecBCType_.pop_back();
+        vecDofs_.pop_back();
+        vecBC_Parameters_.pop_back();
+        vecExternalSol_.pop_back();
+    }
+}
 }
 
 #endif

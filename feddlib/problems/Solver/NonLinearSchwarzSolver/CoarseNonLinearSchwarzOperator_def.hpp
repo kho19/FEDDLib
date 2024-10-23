@@ -105,7 +105,9 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
         // dofs of a node are lumped together
         int dofOrdering = 0;
         auto dofsMaps = Teuchos::ArrayRCP<ConstXMapPtr>(1);
-        BuildDofMaps(repeatedDofsMap, dofsPerNode, dofOrdering, repeatedNodesMap, dofsMaps);
+        Teuchos::RCP<const Xpetra::Map<LO, GO, NO>> dummyRepeatedNodesMap;
+        BuildDofMaps(repeatedDofsMap, dofsPerNode, dofOrdering, dummyRepeatedNodesMap, dofsMaps);
+        FROSCH_ASSERT(repeatedNodesMap->isSameAs(*dummyRepeatedNodesMap), "Error with the repeatedNodesMap.");
 
         // Build nodeList
         auto nodeListFEDD = mesh->getPointsRepeated();
@@ -155,10 +157,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             implicit_cast<ConstXMultiVectorPtr>(nodeList), dirichletBoundaryDofs);
     } else { // else we are dealing with a block system
 
-        // dofsPerNode, repeatedNodesMap, dofsMaps, nullSpaceBasis, nodeList, dirichletBoundaryDofs
-        // iPOUHarmonicCoarseOperator->initialize(dimension,dofsPerNode,   repeatedNodesMap,   dofsMaps, nullSpaceBasis,
-        // nodeList,   dirichletBoundaryDofs);
-        // iPOUHarmonicCoarseOperator->initialize(dimension,dofsPerNodeVec,repeatedNodesMapVec,dofsMapsVec,nullSpaceBasisVec,nodeListVec,dirichletBoundaryDofsVec);
         // Dof count in each block
         auto dofsPerNodeVec = Teuchos::ArrayRCP<unsigned>(domainVec.size());
         // The distribution of dofs. One map for each block. This gets built heuristically in
@@ -203,14 +201,22 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             // dofs of a node are lumped together
             int dofOrdering = 0;
             Teuchos::RCP<const Xpetra::Map<LO, GO, NO>> dummyRepeatedNodesMap;
+            // Function signature is
+            //    int BuildDofMaps(const RCP<const Map> map, unsigned dofsPerNode, unsigned dofOrdering, RCP<const Map>
+            //    &nodesMap, ArrayRCP<RCP<const Map>> &dofMaps, GO offset)
+            //    - map: [in] repeated map of dofs in the dofOrdering
+            //    - dofsPerNode: [in] dofs per node ;)
+            //    - dofOrdering: [in] 0 --> nodewise, 1 --> dimensionwise.
+            //    - nodesMap: [out] repeated map of the nodes. This is not needed here since we already have the
+            //     repeated map. We just check it gets built correctly.
+            //    - dofMaps: [out] An array of repeated maps, one for each dof, that map the dof to its global index i.e. includes the offset.
+            //    - offset: [in] offset taking into account all  previous blocks
             BuildDofMaps(repeatedDofsMapVec[i], dofsPerNodeVec[i], dofOrdering, dummyRepeatedNodesMap, dofsMapsVec[i],
                          offset);
             FROSCH_ASSERT(repeatedNodesMapVec[i]->isSameAs(*dummyRepeatedNodesMap), "Error with the repeatedNodesMap.");
-            offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex() + 1;
 
             // Build nodeList
             auto nodeListFEDD = mesh->getPointsRepeated();
-            // TODO: kho do I need to build the nodeList in a different way?
             nodeListVec[i] =
                 Xpetra::MultiVectorFactory<SC, LO, GO>::Build(repeatedNodesMapVec[i], nodeListFEDD->at(i).size());
             for (auto j = 0; j < nodeListFEDD->size(); j++) {
@@ -239,29 +245,29 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             // Build the vector of Dirichlet node indices
             // See FROSch::FindOneEntryOnlyRowsGlobal() for reference
             int loc = 0;
+            // TODO: insert offset here. Need that anywhere else.
             auto tempDirichletBoundaryDofs = Teuchos::rcp(new std::vector<GO>(0));
             for (auto j = 0; j < repeatedNodesMapVec[i]->getLocalNumElements(); j++) {
                 auto flag = mesh->bcFlagRep_->at(j);
                 // The vector vecFlag_ contains the flags that have been set with addBC().
                 // loc: local index in vecFlag_ of the flag if found. Is set by the function.
                 // block: block id in which to search. Needs to be provided to the function.
+                // offset is required since FROSch indexes the Dirichlet boundary dofs by their global index
                 if (problem_->getBCFactory()->findFlag(flag, i, loc)) {
                     for (auto k = 0; k < dofsPerNodeVec[i]; k++) {
                         tempDirichletBoundaryDofs->push_back(
-                            repeatedDofsMapVec[i]->getGlobalElement(dofsPerNodeVec[i] * j + k));
+                            offset + repeatedDofsMapVec[i]->getGlobalElement(dofsPerNodeVec[i] * j + k));
                     }
                 }
             }
             dirichletBoundaryDofsVec[i] = Teuchos::arcp<GO>(tempDirichletBoundaryDofs);
+            offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex() + 1;
         }
         // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the
         // coarse problem
         IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(dimension, dofsPerNodeVec, repeatedNodesMapVec,
                                                                dofsMapsVec, nullSpaceBasisVec, nodeListVec,
                                                                dirichletBoundaryDofsVec);
-        // iPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(dimension, dofsPerNodeVec, repeatedNodesMapVec,
-        //                                                     dofsMapsVec, nullSpaceBasisVec, nodeListVec,
-        //                                                     dirichletBoundaryDofsVec);
     }
     coarseResidualVec_ =
         Xpetra::MultiVectorFactory<SC, LO, GO>::Build(this->GatheringMaps_[this->GatheringMaps_.size() - 1], 1);
