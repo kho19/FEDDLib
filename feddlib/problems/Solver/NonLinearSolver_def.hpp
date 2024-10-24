@@ -1,6 +1,7 @@
 #ifndef NONLINEARSOLVER_DEF_hpp
 #define NONLINEARSOLVER_DEF_hpp
 #include "NonLinearSolver_decl.hpp"
+#include "feddlib/core/General/BCBuilder_decl.hpp"
 #include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
@@ -678,6 +679,12 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
         rhsCombineOperator->addOperator(
             Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
     }
+
+    // Coarse space has been built so we remove Dirichlet boundary flags for the pressure
+    auto tempBCFactory = Teuchos::rcp(new BCBuilder<SC, LO, GO, NO>(*problem.bcFactory_));
+    tempBCFactory->removeBC();
+    tempBCFactory->removeBC();
+    problem.addBoundaries(tempBCFactory);
 
     auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
         Teuchos::rcpFromRef(problem), problem.getParameterList()));

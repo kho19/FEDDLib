@@ -206,6 +206,11 @@ int main(int argc, char *argv[]) {
     // correctly solve on the subdomains
     bcFactory->addBC(currentSolutionDirichlet2D, -99, 0, domainVelocity, "Dirichlet", dim);
     bcFactory->addBC(currentSolutionDirichlet1D, -99, 1, domainPressure, "Dirichlet", 1);
+
+    // Add pressure boundary for the coarse space. Remove them before solving the problem
+    bcFactory->addBC(zeroDirichlet, 1, 1, domainPressure, "Dirichlet", 1);
+    bcFactory->addBC(zeroDirichlet, 2, 1, domainPressure, "Dirichlet", 1);
+ 
     NavierStokes<SC, LO, GO, NO> navierStokes(domainVelocity, discVelocity, domainPressure, discPressure,
                                               parameterListAll);
 
