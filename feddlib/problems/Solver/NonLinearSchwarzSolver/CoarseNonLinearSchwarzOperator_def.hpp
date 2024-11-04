@@ -3,6 +3,8 @@
 
 #include "CoarseNonLinearSchwarzOperator_decl.hpp"
 #include "feddlib/core/LinearAlgebra/BlockMatrix_decl.hpp"
+#include "feddlib/core/LinearAlgebra/BlockMultiVector_decl.hpp"
+#include "feddlib/core/LinearAlgebra/Map_decl.hpp"
 #include "feddlib/core/LinearAlgebra/MultiVector_decl.hpp"
 #include "feddlib/core/Utils/FEDDUtils.hpp"
 #include <FROSch_IPOUHarmonicCoarseOperator_decl.hpp>
@@ -49,7 +51,7 @@ CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::CoarseNonLinearSchwarzOperator(N
       problem_{problem},
       x_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
       y_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))}, relNewtonTol_{},
-      absNewtonTol_{}, maxNumIts_{}, coarseResidualVec_{}, coarseDeltaG0_{}, deltaG0Merged_{},
+      absNewtonTol_{}, maxNumIts_{}, useBT_{}, coarseResidualVec_{}, coarseDeltaG0_{}, deltaG0Merged_{},
       deltaG0_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
       solutionTmp_{Teuchos::rcp(new FEDD::BlockMultiVector<SC, LO, GO, NO>(problem->getDomainVector().size()))},
       systemTmp_{Teuchos::rcp(new FEDD::BlockMatrix<SC, LO, GO, NO>(problem->getDomainVector().size()))},
@@ -75,6 +77,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
     absNewtonTol_ =
         problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Absolute Tolerance", 1.0e-6);
     maxNumIts_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Max Iterations", 10);
+    useBT_ = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Use Backtracking", true);
     auto dimension = problem_->getParameterList()->sublist("Parameter").get("Dimension", 2);
     totalIters_ = 0;
 
@@ -209,7 +212,8 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             //    - dofOrdering: [in] 0 --> nodewise, 1 --> dimensionwise.
             //    - nodesMap: [out] repeated map of the nodes. This is not needed here since we already have the
             //     repeated map. We just check it gets built correctly.
-            //    - dofMaps: [out] An array of repeated maps, one for each dof, that map the dof to its global index i.e. includes the offset.
+            //    - dofMaps: [out] An array of repeated maps, one for each dof, that map the dof to its global index
+            //    i.e. includes the offset.
             //    - offset: [in] offset taking into account all  previous blocks
             BuildDofMaps(repeatedDofsMapVec[i], dofsPerNodeVec[i], dofOrdering, dummyRepeatedNodesMap, dofsMapsVec[i],
                          offset);
@@ -245,7 +249,6 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             // Build the vector of Dirichlet node indices
             // See FROSch::FindOneEntryOnlyRowsGlobal() for reference
             int loc = 0;
-            // TODO: insert offset here. Need that anywhere else.
             auto tempDirichletBoundaryDofs = Teuchos::rcp(new std::vector<GO>(0));
             for (auto j = 0; j < repeatedNodesMapVec[i]->getLocalNumElements(); j++) {
                 auto flag = mesh->bcFlagRep_->at(j);
@@ -298,7 +301,6 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     // Reset problem
     problem_->initializeProblem();
 
-    // Solve coarse nonlinear problem
     bool verbose = problem_->getVerbose();
     double residual0 = 1.;
     double relResidual = 1.;
@@ -307,6 +309,7 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
     coarseResidualVec_->putScalar(0.);
     coarseDeltaG0_->putScalar(0.);
     deltaG0_->putScalar(0.);
+
     // Need to initialize the rhs_ and set boundary values in rhs_
     problem_->assemble();
     problem_->setBoundaries();
@@ -361,13 +364,75 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
         //  Required because applyCoarseSolve switches out the map without restoring initial map. BAD!!
         coarseResidualVec_->replaceMap(this->GatheringMaps_[this->GatheringMaps_.size() - 1]);
 
+        // Implements a variation of a globalized inexact Newton backtracking as referenced in "Globaly convergent
+        // inexact Newton methods" and "Choosing the forcing terms in an inexact Newton method" by Eisenstat and Walker.
+        SC lambda = 1;
+
+        if (useBT_) {
+        // if (false) {
+            FEDD::print("\nCoarse Newton backtracking commenced\n", this->MpiComm_);
+            // Reduction constants
+            SC alpha = 1e-3;
+            SC nu = 1e-3;
+            // Save current solution since we need to overwrite it to calculate the residual in backtracking
+            auto currentSolution = problem_->solution_;
+            // Clone the current solution
+            problem_->solution_.reset(new BlockMultiVectorFEDD(problem_->solution_));
+            // Calculate initial residual for backtracking
+            problem_->calculateNonLinResidualVec("reverse");
+            // Restrict the residual to the coarse space
+            this->applyPhiT(*problem_->getResidualVector()->getMergedVector()->getXpetraMultiVector(),
+                            *coarseResidualVec_);
+
+            coarseResidualVec_->norm2(residualArray());
+            SC residual0BT = residualArray[0];
+            SC residualBT = residual0BT;
+            int btIter = 0;
+
+            while (lambda > 1e-2) {
+
+                // Update the current correction
+                this->applyPhi(*coarseDeltaG0_, *deltaG0Merged_->getXpetraMultiVectorNonConst());
+                deltaG0_->setMergedVector(deltaG0Merged_);
+                deltaG0_->split();
+                // Reset the solution and update
+                problem_->solution_->update(ST::one(), *currentSolution, ST::zero());
+                problem_->solution_->update(lambda, *deltaG0_, ST::one());
+
+                // Calculate the residual
+                problem_->calculateNonLinResidualVec("reverse");
+                this->applyPhiT(*problem_->getResidualVector()->getMergedVector()->getXpetraMultiVector(),
+                                *coarseResidualVec_);
+                coarseResidualVec_->norm2(residualArray());
+                residualBT = residualArray[0];
+                FEDD::print("\nBacktracking iter: ", this->MpiComm_);
+                FEDD::print(btIter, this->MpiComm_, 0, 10);
+                FEDD::print("\nLambda: ", this->MpiComm_);
+                FEDD::print(lambda, this->MpiComm_, 0, 10);
+                FEDD::print("\nResidual: ", this->MpiComm_);
+                FEDD::print(residualBT, this->MpiComm_, 0, 10);
+                FEDD::print("\n", this->MpiComm_);
+
+                if (residualBT <= residual0BT * (1 - alpha * (1 - nu))) {
+                    FEDD::print("\nCoarse Newton backtracking terminated\n", this->MpiComm_);
+                    break;
+                }
+
+                lambda *= 0.5;
+                nu = 1 - lambda * (1 - nu);
+                btIter++;
+            }
+            // Restore solution_
+            problem_->solution_ = currentSolution;
+        }
         // Project the coarse nonlinear correction update into the global space
         this->applyPhi(*coarseDeltaG0_, *deltaG0Merged_->getXpetraMultiVectorNonConst());
         deltaG0_->setMergedVector(deltaG0Merged_);
         deltaG0_->split();
 
         // Update the current coarse nonlinear correction g_0
-        problem_->solution_->update(ST::one(), *deltaG0_, ST::one());
+        // alpha*input + beta*this
+        problem_->solution_->update(lambda, *deltaG0_, ST::one());
 
         nlIts++;
     }

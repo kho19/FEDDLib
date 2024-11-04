@@ -94,6 +94,7 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     using MeshPtrFEDD = typename Teuchos::RCP<FEDD::Mesh<SC, LO, GO, NO>>;
     using NonLinearProblemPtrFEDD = typename Teuchos::RCP<FEDD::NonLinearProblem<SC, LO, GO, NO>>;
     using BlockMatrixPtrFEDD = typename Teuchos::RCP<FEDD::BlockMatrix<SC, LO, GO, NO>>;
+    using BlockMultiVectorFEDD = typename FEDD::BlockMultiVector<SC, LO, GO, NO>;
     using BlockMultiVectorPtrFEDD = typename Teuchos::RCP<FEDD::BlockMultiVector<SC, LO, GO, NO>>;
     using MapConstPtrFEDD = typename Teuchos::RCP<const FEDD::Map<LO, GO, NO>>;
     using ST = typename Teuchos::ScalarTraits<SC>;
@@ -137,6 +138,7 @@ class CoarseNonLinearSchwarzOperator : public IPOUHarmonicCoarseOperator<SC, LO,
     double relNewtonTol_;
     double absNewtonTol_;
     int maxNumIts_;
+    bool useBT_;
     // Newtons method helpers
     Teuchos::RCP<Xpetra::MultiVector<SC, LO, GO, NO>> coarseResidualVec_;
     Teuchos::RCP<Xpetra::MultiVector<SC, LO, GO, NO>> coarseDeltaG0_;

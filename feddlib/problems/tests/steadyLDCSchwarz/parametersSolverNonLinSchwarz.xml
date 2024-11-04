@@ -42,6 +42,7 @@
   </ParameterList>
 
   <ParameterList name="Inner Newton Nonlinear Schwarz">
+    <Parameter name="Use Backtracking" type="bool" value="true" />
     <Parameter name="Relative Tolerance" type="double" value="1.0e-3" />
     <Parameter name="Absolute Tolerance" type="double" value="1.0e-9" />
     <Parameter name="Max Iterations" type="int" value="10" />

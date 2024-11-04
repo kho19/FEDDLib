@@ -301,6 +301,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
         }
     }
     // Solve local nonlinear problems
+    bool useBT = problem_->getParameterList()->sublist("Inner Newton Nonlinear Schwarz").get("Use Backtracking", true);
     bool verbose = problem_->getVerbose();
     double residual0 = 1.;
     double relResidual = 1.;
@@ -346,7 +347,7 @@ void NonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVectorPtrFE
 
         // Passing relative residual here is not correct since the residual of the update is returned
         // Not using this value here though so it does not matter
-        problem_->solveAndUpdate("", absResidual);
+        problem_->solveAndUpdate("", absResidual, this->MpiComm_->getRank(), useBT);
 
         nlIts++;
     }
