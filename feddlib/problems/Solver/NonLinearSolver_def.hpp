@@ -635,8 +635,8 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     // The coarse space is built using this Jacobian
     // Calling these first two lines does have an affect on the Jacobian that is used to build the coarse space.
     // Depending on the particular problem implementation a different set of these calls to assemble should be used.
-    /* problem.solution_->scale(-1.); */
-    problem.bcFactory_->setVectorMinusBC(problem.solution_, problem.solution_);
+    problem.solution_->scale(-1.);
+    problem.bcFactory_->setBCMinusVector(problem.solution_, problem.solution_);
     problem.assemble();
     problem.assemble("FixedPoint");
     problem.assemble("Newton");
