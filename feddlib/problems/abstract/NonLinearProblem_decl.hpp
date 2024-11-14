@@ -68,7 +68,7 @@ public:
 
     virtual void getValuesOfInterest( vec_dbl_Type& values ) = 0;
     
-    int solveAndUpdate( const std::string& criterion , double& criterionValue );
+    int solveAndUpdate( const std::string& criterion , double& criterionValue, const int myRank = 0, const bool useBT = false);
 
     int solveUpdate( );
 

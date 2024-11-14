@@ -102,10 +102,18 @@ u_rep_()
 
 }
 
-template<class SC,class LO,class GO,class NO>
-void NavierStokes<SC,LO,GO,NO>::info(){
+template <class SC, class LO, class GO, class NO> void NavierStokes<SC, LO, GO, NO>::info() {
     this->infoProblem();
     this->infoNonlinProblem();
+    // Print problem specific information
+    if (this->comm_->getRank() == 0) {
+        std::cout << "\t ### Navier Stokes specific information\n";
+        std::cout << "\t ### Viscosity: " << this->parameterList_->sublist("Parameter").get("Viscosity", 1.e-2)
+                  << std::endl;
+        std::cout << "\t ### Density: " << this->parameterList_->sublist("Parameter").get("Density", 1.) << std::endl;
+        std::cout << "\t ### Max. velocity: " << this->parameterList_->sublist("Parameter").get("MaxVelocity", 1.)
+                  << std::endl;
+    }
 }
 
 template<class SC,class LO,class GO,class NO>

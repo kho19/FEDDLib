@@ -448,7 +448,6 @@ void CoarseNonLinearSchwarzOperator<SC, LO, GO, NO>::apply(const BlockMultiVecto
                                    "step. Still we cancel here.");
     }
 
-    // y->getBlockNonConst(0)->update(alpha, problem_->getSolution()->getBlock(0), beta);
     y->update(alpha, problem_->getSolution(), beta);
     // Restore problem state
     problem_->initializeProblem();

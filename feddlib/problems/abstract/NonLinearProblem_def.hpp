@@ -145,7 +145,7 @@ namespace FEDD
     }
 
     template <class SC, class LO, class GO, class NO>
-    int NonLinearProblem<SC, LO, GO, NO>::solveAndUpdate(const std::string &criterion, double &criterionValue)
+    int NonLinearProblem<SC, LO, GO, NO>::solveAndUpdate(const std::string &criterion, double &criterionValue, const int myRank, const bool useBT)
     {
         //    BlockMatrixPtr_Type system
         int its = solveUpdate();
@@ -157,7 +157,63 @@ namespace FEDD
             criterionValue = updateNorm[0];
         }
 
-        this->solution_->update(1., *previousSolution_, 1.);
+        // Implements a variation of a globalized inexact Newton backtracking as referenced in "Globaly convergent
+        // inexact Newton methods" and "Choosing the forcing terms in an inexact Newton method" by Eisenstat and Walker.
+        SC lambda = 1;
+        bool printHere = myRank == 0;
+
+        if (useBT) {
+            // if (false) {
+            if (printHere) {
+                std::cout << "==> Backtracking commenced\n";
+            }
+            // Reduction constants
+            SC alpha = 1e-3;
+            SC nu = 1e-3;
+            // Save current solution since we need to overwrite it to calculate the residual in backtracking
+            auto newtonUpdate = this->solution_;
+            this->solution_.reset(new BlockMultiVector_Type(this->previousSolution_));
+            // Calculate initial residual for backtracking
+            this->calculateNonLinResidualVec("reverse");
+
+            Teuchos::Array<SC> residualArray(1);
+            this->residualVec_->norm2(residualArray());
+            SC residual0BT = residualArray[0];
+            SC residualBT = residual0BT;
+            int btIter = 0;
+
+            while (lambda > 1e-2) {
+
+                //  Reset and update the current solution
+                this->solution_->update(1., *this->previousSolution_, 0.);
+                this->solution_->update(lambda, *newtonUpdate, 1.);
+
+                // Calculate the residual
+                this->calculateNonLinResidualVec("reverse");
+                this->residualVec_->norm2(residualArray());
+                residualBT = residualArray[0];
+                if (printHere) {
+                    std::cout << "Backtracking iter: " << btIter << "\nLambda: " << lambda << "\n";
+                }
+
+                if (residualBT <= residual0BT * (1 - alpha * (1 - nu))) {
+                    if (printHere) {
+                        std::cout << "==> Backtracking terminated\n";
+                    }
+                    break;
+                }
+
+                lambda *= 0.5;
+                nu = 1 - lambda * (1 - nu);
+                btIter++;
+            }
+            // Restore solution_
+            this->solution_ = newtonUpdate;
+        }
+
+        // In backtracking this->solution_ holds the current solution and is updated with newtonUpdate. Here
+        // this->solution_ holds the Newton update and previousSolution_ holds the current solution (obviously :P)
+        this->solution_->update(1., *previousSolution_, lambda);
 
         return its;
     }

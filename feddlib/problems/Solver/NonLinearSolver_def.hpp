@@ -392,7 +392,7 @@ void NonLinearSolver<SC,LO,GO,NO>::solveNewton( NonLinearProblem_Type &problem )
                 break;
         }
 
-        gmresIts += problem.solveAndUpdate( criterion, criterionValue );
+        gmresIts += problem.solveAndUpdate( criterion, criterionValue, problem.getComm()->getRank(), true);
         nlIts++;
         if(criterion=="Update"){
             if (verbose)
@@ -680,12 +680,6 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
             Teuchos::rcp_implicit_cast<FROSch::NonLinearOperator<SC, LO, GO, NO>>(coarseOperator));
     }
 
-    // Coarse space has been built so we remove Dirichlet boundary flags for the pressure
-    auto tempBCFactory = Teuchos::rcp(new BCBuilder<SC, LO, GO, NO>(*problem.bcFactory_));
-    tempBCFactory->removeBC();
-    tempBCFactory->removeBC();
-    problem.addBoundaries(tempBCFactory);
-
     auto simpleOverlappingOperator = Teuchos::rcp(new FROSch::SimpleOverlappingOperator<SC, LO, GO, NO>(
         Teuchos::rcpFromRef(problem), problem.getParameterList()));
     simpleCombineOperator->addOperator(simpleOverlappingOperator);
@@ -726,7 +720,8 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
 
     // Define convergence requirements
     double gmresIts = 0.;
-    double outerTol = problem.getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6);
+    double outerRelTol = problem.getParameterList()->sublist("Parameter").get("relNonLinTol", 1.0e-6);
+    double outerAbsTol = problem.getParameterList()->sublist("Parameter").get("absNonLinTol", 1.0e-6);
     int outerNonLinIts = 0;
     int maxOuterNonLinIts = problem.getParameterList()->sublist("Parameter").get("MaxNonLinIts", 10);
 
@@ -740,7 +735,8 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     print("\n\tCombine mode: " + problem.getParameterList()->get("Combine Mode", "Restricted"), mpiComm);
     print("\n\tOverlap: " + std::to_string(problem.getParameterList()->get("Overlap", 1)), mpiComm);
     print("\n\tNum. levels: " + std::to_string(numLevels), mpiComm);
-    print("\n\tRel. tol: " + std::to_string(outerTol), mpiComm);
+    print("\n\tRel. tol: " + std::to_string(outerRelTol), mpiComm);
+    print("\n\tAbs. tol: " + std::to_string(outerAbsTol), mpiComm);
     print("\n\tMax outer Newton iters.: " + std::to_string(maxOuterNonLinIts) + "\n", mpiComm);
 
     // Compute the residual
@@ -750,10 +746,12 @@ void NonLinearSolver<SC, LO, GO, NO>::solveNonLinearSchwarz(NonLinearProblem_Typ
     auto relativeResidual = residual / residual0;
 
     // Outer Newton iterations
-    while (relativeResidual > outerTol && outerNonLinIts < maxOuterNonLinIts) {
+    while (relativeResidual > outerRelTol && residual > outerAbsTol && outerNonLinIts < maxOuterNonLinIts) {
         logGreen("Starting outer Newton iteration: " + std::to_string(outerNonLinIts), mpiComm);
         print("Rel. residual: ", mpiComm);
         print(relativeResidual, mpiComm);
+        print(" Abs. residual: ", mpiComm);
+        print(residual, mpiComm);
         print("\n", mpiComm);
 
         // Compute the residual of the alternative problem \mathcal{F} = g

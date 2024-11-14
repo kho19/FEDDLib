@@ -232,16 +232,11 @@ int main(int argc, char *argv[]) {
         int numProcsCoarseSolve = parameterListProblem->sublist("General").get("Mpi Ranks Coarse", 0);
         int size = comm->getSize() - numProcsCoarseSolve;
 
-        Teuchos::RCP<Teuchos::Time> totalTime(Teuchos::TimeMonitor::getNewCounter("main: Total Time"));
-        Teuchos::RCP<Teuchos::Time> buildMesh(Teuchos::TimeMonitor::getNewCounter("main: Build Mesh"));
-        Teuchos::RCP<Teuchos::Time> solveTime(Teuchos::TimeMonitor::getNewCounter("main: Solve problem time"));
         {
             DomainPtr_Type domainPressure;
             DomainPtr_Type domainVelocity;
             {
-                Teuchos::TimeMonitor totalTimeMonitor(*totalTime);
                 {
-                    Teuchos::TimeMonitor buildMeshMonitor(*buildMesh);
                     if (verbose) {
                         cout << "-- Building Mesh ..." << flush;
                     }
@@ -406,21 +401,26 @@ int main(int argc, char *argv[]) {
                 navierStokes.info();
 
                 {
-                    Teuchos::TimeMonitor solveTimeMonitor(*solveTime);
 
                     navierStokes.addBoundaries(bcFactory);
                     navierStokes.addRhsFunction(dummyFunc);
 
                     navierStokes.initializeProblem();
-                    navierStokes.assemble();
 
+                    bcFactory->setBCMinusVector(navierStokes.solution_, navierStokes.solution_);
+                    // bcFactory->setVectorMinusBC(navierStokes.solution_, navierStokes.solution_);
+                   
+                    // Required to assemble constant parts of the problem i.e. independent of solution
+                    navierStokes.assemble();
                     navierStokes.setBoundariesRHS();
 
                     // navierStokes.getSystem()->getBlock(1,1)->print();
                     std::string nlSolverType =
                         parameterListProblem->sublist("General").get("Linearization", "FixedPoint");
                     NonLinearSolver<SC, LO, GO, NO> nlSolver(nlSolverType);
+                    FEDD_TIMER_START(SolveTimer, " - NKS - global solve");
                     nlSolver.solve(navierStokes);
+                    FEDD_TIMER_STOP(SolveTimer);
                     comm->barrier();
                 }
 
@@ -486,7 +486,7 @@ int main(int argc, char *argv[]) {
             cout << "###############################################################" << endl;
         }
     }
-    Teuchos::TimeMonitor::report(cout);
+    Teuchos::TimeMonitor::report(cout, "FEDD");
     stackedTimer->stop("Steady Navier-Stokes");
     StackedTimer::OutputOptions options;
     options.output_fraction = options.output_histogram = options.output_minmax = true;

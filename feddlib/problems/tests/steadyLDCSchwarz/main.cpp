@@ -99,10 +99,9 @@ int main(int argc, char *argv[]) {
     string xmlSchwarzSolverFile = "parametersSolverNonLinSchwarz.xml";
     myCLP.setOption("schwarzsolverfile", &xmlSchwarzSolverFile, ".xml file with Inputparameters.");
     bool debug = false;
-    myCLP.setOption("debug", "", &debug, "bool option for debugging");
-
+    myCLP.setOption("debug", "", &debug, "Bool option for debugging");
     double length = 4.;
-    myCLP.setOption("length", &length, "length of domain.");
+    myCLP.setOption("length", &length, "Length of domain.");
 
     myCLP.recogniseAllOptions(true);
     myCLP.throwExceptions(false);
@@ -207,10 +206,6 @@ int main(int argc, char *argv[]) {
     bcFactory->addBC(currentSolutionDirichlet2D, -99, 0, domainVelocity, "Dirichlet", dim);
     bcFactory->addBC(currentSolutionDirichlet1D, -99, 1, domainPressure, "Dirichlet", 1);
 
-    // Add pressure boundary for the coarse space. Remove them before solving the problem
-    bcFactory->addBC(zeroDirichlet, 1, 1, domainPressure, "Dirichlet", 1);
-    bcFactory->addBC(zeroDirichlet, 2, 1, domainPressure, "Dirichlet", 1);
- 
     NavierStokes<SC, LO, GO, NO> navierStokes(domainVelocity, discVelocity, domainPressure, discPressure,
                                               parameterListAll);
 
