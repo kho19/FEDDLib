@@ -54,8 +54,8 @@
 # @HEADER
 
 TRIBITS_TPL_FIND_INCLUDE_DIRS_AND_LIBRARIES( AceGENInterface
-  REQUIRED_HEADERS aceinterface.h ace2.h
-  REQUIRED_LIBS_NAMES libinterface2 libaceutility
+  REQUIRED_HEADERS aceinterface.h
+  REQUIRED_LIBS_NAMES libinterface2
   )
 
 SET(CMAKE_REQUIRED_INCLUDES ${TPL_AceGENInterface_INCLUDE_DIRS})

@@ -167,10 +167,6 @@ int main(int argc, char *argv[]) {
     NonLinElasAssFE.addParemeterRhs(degree);
 
     NonLinElasAssFE.initializeProblem();
-    NonLinElasAssFE.reInitSpecificProblemVectors(domain->getMapVecFieldOverlappingGhosts());
-    NonLinElasAssFE.assemble();
-    NonLinElasAssFE.setBoundaries();
-    NonLinElasAssFE.setBoundariesRHS();
 
     // std::string nlSolverType = parameterListProblem->sublist("General").get("Linearization", "Newton");
     std::string nlSolverType = "NonLinearSchwarz";

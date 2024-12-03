@@ -2,7 +2,7 @@
 
   <Parameter name="Nonlin Schwarz Variant" type="string" value="Additive" /><!-- Additive, H1 -->
   <Parameter name="Use ASPEN" type="bool" value="true" />
-  <Parameter name="Levels" type="int" value="2" />
+  <Parameter name="Levels" type="int" value="1" />
   <Parameter name="Overlap" type="int" value="3" />
   <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
   <Parameter name="Zero Initial Guess" type="bool" value="false" />
@@ -42,6 +42,7 @@
   </ParameterList>
 
   <ParameterList name="Inner Newton Nonlinear Schwarz">
+    <Parameter name="Use Backtracking" type="bool" value="false" />
     <Parameter name="Relative Tolerance" type="double" value="1.0e-6" />
     <Parameter name="Absolute Tolerance" type="double" value="1.0e-9" />
     <Parameter name="Max Iterations" type="int" value="15" />
@@ -51,7 +52,7 @@
     IPOUHarmonicCoarseOperator in FROSch -->
 
     <Parameter name="Store Phi" type="bool" value="true" />
-    <Parameter name="DofsPerNode1" type="int" value="2"/>
+    <Parameter name="DofsPerNode1" type="int" value="2" />
 
     <!-- <Parameter name="Null Space Type" type="string" value="Laplace" /> -->
     <Parameter name="Null Space Type" type="string" value="Linear Elasticity" />
@@ -63,7 +64,8 @@
         <ParameterList name="InterfacePartitionOfUnity">
           <Parameter name="Type" type="string" value="RGDSW" />
           <ParameterList name="RGDSW">
-            <!--Specify the RGDSW coarse space type here 1.0 (Constant) or 2.2 (Inverse Euclidean)-->
+            <!--Specify
+            the RGDSW coarse space type here 1.0 (Constant) or 2.2 (Inverse Euclidean)-->
             <!-- <Parameter name="Distance Function" type="string" value="Constant" /> -->
             <Parameter name="Distance Function" type="string" value="Inverse Euclidean" />
             <Parameter name="Interface Communication Strategy" type="string" value="CrsGraph" />
