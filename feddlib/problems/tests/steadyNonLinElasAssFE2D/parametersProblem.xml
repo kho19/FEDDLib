@@ -3,13 +3,14 @@
         <Parameter name="Dimension"							    type="int"   	value="2"/>
         <Parameter name="Discretization"                        type="string"   value="P1"/>
         <Parameter name="Mesh Type" type="string" value="unstructured"/> <!--structured, unstructured -->
-        <Parameter name="Volume force" type="double" value="-7e3"/>
+        <Parameter name="Volume force" type="double" value="-7e-2"/>
 	    <!-- <Parameter name="Source Type" type="string"   value="volume"/> -->
         <Parameter name="Mesh Delimiter"					    type="string"   value=" "/>
         <Parameter name="H/h"							    	type="int"   	value="10"/>   
           <Parameter name="relNonLinTol" type="double" value="1.0e-4"/>
         <Parameter name="MaxNonLinIts" type="int" value="15"/>
         <Parameter name="Criterion" type="string" value="Residual"/>     
+        <Parameter name="Use Backtracking" type="bool" value="false" />
  	<Parameter name="Material model" type="string" value="Neo-Hooke"/><!--Saint Venant-Kirchhoff,Neo-Hooke, Mooney-Rivlin -->
         <Parameter name="Neo-Hooke Modell" type="int" value="2"/><!--different energy functions -->
         <Parameter name="Density" type="double"   value="7.83e-6."/>

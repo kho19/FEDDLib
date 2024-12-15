@@ -368,6 +368,7 @@ void NonLinearSolver<SC,LO,GO,NO>::solveNewton( NonLinearProblem_Type &problem )
     int maxNonLinIts = problem.getParameterList()->sublist("Parameter").get("MaxNonLinIts",10);
     double criterionValue = 1.;
     std::string criterion = problem.getParameterList()->sublist("Parameter").get("Criterion","Residual");
+    bool useBT = problem.getParameterList()->sublist("Parameter").get("Use Backtracking",true);
 
     while ( nlIts < maxNonLinIts ) {
         //this makes only sense for Navier-Stokes/Stokes, for other problems, e.g., non linear elasticity, it should do nothing.
@@ -392,7 +393,7 @@ void NonLinearSolver<SC,LO,GO,NO>::solveNewton( NonLinearProblem_Type &problem )
                 break;
         }
 
-        gmresIts += problem.solveAndUpdate( criterion, criterionValue, problem.getComm()->getRank(), true);
+        gmresIts += problem.solveAndUpdate( criterion, criterionValue, problem.getComm()->getRank(), useBT);
         nlIts++;
         if(criterion=="Update"){
             if (verbose)
