@@ -2,7 +2,7 @@
 
   <Parameter name="Nonlin Schwarz Variant" type="string" value="Additive" /><!-- Additive, H1 -->
   <Parameter name="Use ASPEN" type="bool" value="true" />
-  <Parameter name="Levels" type="int" value="1" />
+  <Parameter name="Levels" type="int" value="2" />
   <Parameter name="Overlap" type="int" value="3" />
   <Parameter name="Combine Mode" type="string" value="Averaging" /> <!-- Averaging, Full, Restricted -->
   <Parameter name="Zero Initial Guess" type="bool" value="false" />
@@ -51,6 +51,8 @@
   <ParameterList name="Coarse Nonlinear Schwarz"> <!-- Same list as passed to
     IPOUHarmonicCoarseOperator in FROSch -->
 
+    <!--Set to false for inverse Euclidean drop at the edges and true for constant until the edges in RGDSW 2D -->
+    <Parameter name="Remove Dirichlet Nodes" type="bool" value="false" />
     <Parameter name="Store Phi" type="bool" value="true" />
     <Parameter name="DofsPerNode1" type="int" value="2" />
 

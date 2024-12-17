@@ -48,6 +48,8 @@
                     
                     <Parameter name="Store Phi" type="bool" value="true"/>
                     
+                    <!--Set to false for inverse Euclidean drop at the edges and true for constant until the edges in RGDSW 2D -->
+                    <Parameter name="Remove Dirichlet Nodes" type="bool" value="false" />
                     <Parameter name="Write phi and problem" type="bool" value="false"/>
                     <Parameter name="Write coarse matrix" type="bool" value="false"/>
                     
