@@ -204,6 +204,8 @@ namespace FEDD
                 }
 
                 lambda *= 0.5;
+                // This is a fixed point iteration that converges to 1
+                // This increases the threshold (makes it less strict) for the backtracking to exit in each iteration. See exit crit. above.
                 nu = 1 - lambda * (1 - nu);
                 btIter++;
             }

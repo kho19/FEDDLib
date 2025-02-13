@@ -243,7 +243,8 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             }
             // nullSpaceBasis is a multiVector with one vector for each function in the nullspace e.g. translations
             // and rotations for elasticity. Each vector contains the nullspace function on the repeated map. At
-            // this point different nullspaces could be built for each block
+            // this point different nullspaces could be built for each block.
+            // The nullspace is multiplied by partition of unity to build the coarse space. This ensures that the coarse space spans the nullspace
             nullSpaceBasisVec[i] = BuildNullSpace(dimension, nullSpaceType, repeatedDofsMapVec[i], dofsPerNodeVec[i],
                                                   dofsMapsVec[i], implicit_cast<ConstXMultiVectorPtr>(nodeListVec[i]));
             // Build the vector of Dirichlet node indices
@@ -267,7 +268,7 @@ template <class SC, class LO, class GO, class NO> int CoarseNonLinearSchwarzOper
             offset += repeatedDofsMapVec[i]->getMaxAllGlobalIndex() + 1;
         }
         // This builds the coarse spaces, assembles the coarse solve map and does symbolic factorization of the
-        // coarse problem
+        // coarse problem. Numerical factorization is done in the build() function.
         IPOUHarmonicCoarseOperator<SC, LO, GO, NO>::initialize(dimension, dofsPerNodeVec, repeatedNodesMapVec,
                                                                dofsMapsVec, nullSpaceBasisVec, nodeListVec,
                                                                dirichletBoundaryDofsVec);
