@@ -5,9 +5,9 @@
 #include "feddlib/core/FEDDCore.hpp"
 #include <iostream>
 #include <vector>
-// #ifdef FEDD_HAVE_ACEGENINTERFACE
+#ifdef FEDD_HAVE_ACEGENINTERFACE
 #include "aceinterface.hpp"
-// #endif
+#endif
 
 namespace FEDD {
 
@@ -54,7 +54,7 @@ template <class SC, class LO, class GO, class NO> void AssembleFE_NonLinElas2D<S
 template <class SC, class LO, class GO, class NO>
 void AssembleFE_NonLinElas2D<SC, LO, GO, NO>::assemblyNonLinElas2D(SmallMatrixPtr_Type &elementMatrix) {
 
-    // #ifdef FEDD_HAVE_ACEGENINTERFACE
+    #ifdef FEDD_HAVE_ACEGENINTERFACE
 
     this->rhsVec_.reset(new vec_dbl_Type(dofsElement_, 0.));
     // x,y coords of the nodes of the current element
@@ -104,7 +104,7 @@ void AssembleFE_NonLinElas2D<SC, LO, GO, NO>::assemblyNonLinElas2D(SmallMatrixPt
             (*elementMatrix)[i][j] = stiffnessMatrix[i][j];
         }
     }
-    // #endif // FEDD_HAVE_ACEGENINTERFACE
+    #endif // FEDD_HAVE_ACEGENINTERFACE
 }
 
 } // namespace FEDD
